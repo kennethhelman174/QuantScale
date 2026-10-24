@@ -40,6 +40,8 @@ export default function App() {
     localStorage.setItem('quantscale_theme', nextTheme);
   };
 
+  const [backendConnected, setBackendConnected] = useState(false);
+  const controlsUnavailable = () => alert('Only authenticated backend trading controls are allowed. Browser-local trading is disabled.');
   // Subscribe to real-time central backend engine state changes via WebSocket
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -55,6 +57,7 @@ export default function App() {
 
         socket.onopen = () => {
           isConnectedToServer = true;
+          setBackendConnected(true);
           tradingEngine.logDiagnostic('INFO', 'ORDER_ROUTING', 'Dashboard client synced with central QuantScale backend server.');
         };
 
@@ -62,7 +65,12 @@ export default function App() {
           try {
             const packet = JSON.parse(event.data);
             if (packet.type === 'TICK_UPDATE' || packet.type === 'STATE_SNAPSHOT') {
-              if (packet.spotPrice) tradingEngine.currentSpotPrice = packet.spotPrice;
+              if (Number.isFinite(packet.spotPrice)) tradingEngine.currentSpotPrice = packet.spotPrice;
+              if (packet.market) tradingEngine.currentMarket = packet.market;
+              if (packet.book) tradingEngine.currentBook = packet.book;
+              if (Array.isArray(packet.candles)) tradingEngine.candles = packet.candles;
+              if (Array.isArray(packet.spotHistory)) tradingEngine.spotHistory = packet.spotHistory;
+              if (Array.isArray(packet.riskPortfolios)) tradingEngine.riskManager.hydratePortfolios(packet.riskPortfolios);
               if (packet.mode) tradingEngine.mode = packet.mode;
               if (packet.positions) tradingEngine.positions = packet.positions;
               if (packet.orders) tradingEngine.orders = packet.orders;
@@ -73,16 +81,9 @@ export default function App() {
           }
         };
 
-        socket.onerror = () => {
-          if (!isConnectedToServer) {
-            tradingEngine.start();
-          }
-        };
-      } catch {
-        tradingEngine.start();
-      }
-    } else {
-      tradingEngine.start();
+        socket.onclose = () => setBackendConnected(false);
+        socket.onerror = () => setBackendConnected(false);
+      } catch { setBackendConnected(false); }
     }
 
     const unsubscribe = tradingEngine.subscribe(() => {
@@ -98,51 +99,14 @@ export default function App() {
   const primaryRisk = tradingEngine.riskManager.getPortfolio('PRIMARY')!;
   const allPortfolios = tradingEngine.riskManager.getAllPortfolios();
 
-  const handleManualOrder = (side: 'YES' | 'NO', price: number, contracts: number) => {
-    const action = side === 'YES' ? 'ENTER_YES' : 'ENTER_NO';
-    tradingEngine['submitStrategyOrder']('PRIMARY', {
-      strategyId: 'BTC-LEADLAG-SCALP',
-      timestamp: Date.now(),
-      marketTicker: tradingEngine.currentMarket.ticker,
-      action,
-      suggestedPrice: price,
-      suggestedQuantity: contracts,
-      theoreticalProbability: price / 100,
-      marketProbability: price / 100,
-      edgeCents: 1.5,
-      expectedNetValue: 0.15,
-      uncertaintyEstimate: 0.05,
-      rationale: `Manual simulator ticket: Buy ${side} @ ${price}¢ (${contracts} contracts)`,
-    });
-  };
-
-  const handleClosePosition = (pos: Position) => {
-    const exitPrice =
-      pos.side === 'YES'
-        ? tradingEngine.currentBook.yesBids[0]?.price || pos.entryPrice
-        : tradingEngine.currentBook.noBids[0]?.price || (100 - pos.entryPrice);
-    tradingEngine.closePosition(pos, exitPrice, 'Manual User Close', Date.now());
-  };
-
-  const handleCancelOrder = (orderId: string) => {
-    const ord = tradingEngine.orders.find((o) => o.id === orderId);
-    if (ord) {
-      ord.state = 'CANCELED';
-      ord.canceledAt = Date.now();
-      tradingEngine.logDiagnostic('INFO', 'ORDER_ROUTING', `Canceled order #${orderId}`);
-    }
-  };
-
-  const handleToggleEngine = () => {
-    if (tradingEngine.getIsRunning()) {
-      tradingEngine.stop();
-    } else {
-      tradingEngine.start();
-    }
-  };
+  const handleManualOrder = (_side: 'YES' | 'NO', _price: number, _contracts: number) => controlsUnavailable();
+  const handleClosePosition = (_pos: Position) => controlsUnavailable();
+  const handleCancelOrder = (_orderId: string) => controlsUnavailable();
+  const handleToggleEngine = () => controlsUnavailable();
 
   return (
     <div className={`min-h-screen transition-colors duration-200 ${theme === 'light' ? 'theme-light bg-slate-50 text-slate-900' : 'bg-[#0a0a0c] text-neutral-100'} flex flex-col font-sans selection:bg-cyan-500 selection:text-black ${isKiosk ? 'p-2' : ''}`}>
+      {!backendConnected && <div role="alert" className="bg-red-900 p-3 text-white text-center">Backend disconnected — NO trading will run locally.</div>}
       {/* Top Bar Navigation */}
       <Navbar
         activeTab={activeTab}
@@ -151,7 +115,7 @@ export default function App() {
         isRunning={tradingEngine.getIsRunning()}
         onToggleEngine={handleToggleEngine}
         isAutoTrading={tradingEngine.isAutoTrading}
-        onToggleAutoTrading={() => tradingEngine.toggleAutoTrading()}
+        onToggleAutoTrading={controlsUnavailable}
         onOpenSafeguards={(tab = 'safeguards') => {
           setSafeguardsTab(tab);
           setIsSafeguardsOpen(true);
@@ -186,12 +150,12 @@ export default function App() {
             decisions={tradingEngine.decisionsLog}
             onManualOrder={handleManualOrder}
             isAutoTrading={tradingEngine.isAutoTrading}
-            onToggleAutoTrading={() => tradingEngine.toggleAutoTrading()}
+            onToggleAutoTrading={controlsUnavailable}
             autoTradingMode={tradingEngine.autoTradingMode}
-            onSetAutoTradingMode={(m) => tradingEngine.setAutoTradingMode(m)}
+            onSetAutoTradingMode={controlsUnavailable}
             autoTradeCount={tradingEngine.autoTradeCount}
             lastAutoTradeSummary={tradingEngine.lastAutoTradeSummary}
-            onTriggerAutoTrade={() => tradingEngine.triggerAutonomousTrade()}
+            onTriggerAutoTrade={() => ({ executed: false, message: 'Use authenticated backend controls.' })}
           />
         )}
 
@@ -207,12 +171,12 @@ export default function App() {
         {activeTab === 'strategies' && (
           <StrategiesTab
             decisionVolMetric={tradingEngine.decisionVolMetric}
-            onSetDecisionVolMetric={(m) => tradingEngine.setDecisionVolMetric(m)}
+            onSetDecisionVolMetric={controlsUnavailable}
             spotHistory={tradingEngine.spotHistory}
             candles={tradingEngine.candles}
             currentSpotPrice={tradingEngine.currentSpotPrice}
             autoTradingMode={tradingEngine.autoTradingMode}
-            onSetAutoTradingMode={(m) => tradingEngine.setAutoTradingMode(m)}
+            onSetAutoTradingMode={controlsUnavailable}
           />
         )}
 
@@ -249,19 +213,11 @@ export default function App() {
         currentMode={tradingEngine.mode}
         isPaused={tradingEngine.riskManager.isPaused()}
         riskLimits={tradingEngine.riskManager.getLimits()}
-        onTogglePause={() => {
-          tradingEngine.riskManager.setEmergencyPause(!tradingEngine.riskManager.isPaused());
-        }}
-        onCancelAllOrders={() => tradingEngine.manualCancelAllOrders('PRIMARY')}
-        onFlattenPositions={() => tradingEngine.manualFlattenPositions('PRIMARY')}
-        onSetExecutionMode={(m) => {
-          tradingEngine.mode = m;
-          tradingEngine.logDiagnostic('WARN', 'ORDER_ROUTING', `Execution environment switched to [${m}]`);
-        }}
-        onUpdateRiskLimits={(limits) => {
-          tradingEngine.riskManager.updateLimits(limits);
-          tradingEngine.logDiagnostic('INFO', 'RISK_GATE', 'Updated portfolio financial limits');
-        }}
+        onTogglePause={controlsUnavailable}
+        onCancelAllOrders={controlsUnavailable}
+        onFlattenPositions={controlsUnavailable}
+        onSetExecutionMode={controlsUnavailable}
+        onUpdateRiskLimits={controlsUnavailable}
       />
 
       {/* Kalshi API Setup Wizard Modal */}
@@ -269,19 +225,11 @@ export default function App() {
         isOpen={isSetupWizardOpen}
         onClose={() => setIsSetupWizardOpen(false)}
         currentCredentials={tradingEngine.dataCollector.getCredentials()}
-        onSaveCredentials={async (creds: KalshiApiCredentials) => {
-          tradingEngine.dataCollector.setCredentials(creds);
-          if (creds.environment !== 'PAPER') {
-            tradingEngine.mode = creds.environment === 'LIVE' ? 'LIVE' : 'DEMO';
-          }
-          const res = await tradingEngine.dataCollector.testConnectivity();
-          tradingEngine.logDiagnostic(
-            res.isSuccess ? 'INFO' : 'WARN',
-            'MARKET_DATA',
-            `API Setup Wizard tested credentials against Kalshi gateway: ${res.message}`
-          );
-          return res;
-        }}
+        onSaveCredentials={async (_creds: KalshiApiCredentials) => ({
+          isSuccess: false, status: 'OFFLINE' as const, latencyMs: 0,
+          exchangeTime: new Date().toISOString(), tradingActive: false,
+          message: 'Browser credentials disabled. Configure market feeds on the backend.'
+        })}
       />
     </div>
   );

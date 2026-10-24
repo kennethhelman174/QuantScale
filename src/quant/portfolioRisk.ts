@@ -148,6 +148,10 @@ export class PortfolioRiskManager {
     });
   }
 
+  public hydratePortfolios(rows: PortfolioRiskState[]): void {
+    for (const row of rows) if (row && row.portfolioId) this.portfolios.set(row.portfolioId, row);
+  }
+
   public getLimits(): RiskLimitsConfig {
     return { ...this.limits };
   }

@@ -132,6 +132,9 @@ async function startServer() {
       isAutoTrading: tradingEngine.isAutoTrading,
       autoTradingMode: tradingEngine.autoTradingMode,
       wallet: dbEngine.getWallet('PAPER'),
+      riskPortfolios: tradingEngine.riskManager.getAllPortfolios(),
+      candles: tradingEngine.candles,
+      spotHistory: tradingEngine.spotHistory,
       updaterStatus: githubUpdater.getStatus(),
     };
     ws.send(JSON.stringify(snapshotPacket));
@@ -163,6 +166,9 @@ async function startServer() {
       isAutoTrading: tradingEngine.isAutoTrading,
       autoTradingMode: tradingEngine.autoTradingMode,
       wallet: dbEngine.getWallet('PAPER'),
+      riskPortfolios: tradingEngine.riskManager.getAllPortfolios(),
+      candles: tradingEngine.candles,
+      spotHistory: tradingEngine.spotHistory,
     };
     const message = JSON.stringify(packet);
     for (const client of connectedClients) {
@@ -333,6 +339,10 @@ async function startServer() {
     }
     if (mode !== 'DEMO' && mode !== 'PAPER') {
       res.status(400).json({ error: 'Only DEMO or PAPER is supported.' });
+      return;
+    }
+    if (tradingEngine.positions.some(p => p.status === 'OPEN')) {
+      res.status(409).json({ error: 'Cannot switch modes with open positions.' });
       return;
     }
     tradingEngine.stop();
