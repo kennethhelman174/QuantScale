@@ -2,229 +2,323 @@
  * Chronological Walk-Forward Backtest & Evaluation Tab
  *
  * Implements strict leak-free chronological evaluation:
- * - Train vs Untouched Out-of-Sample evaluation splits
- * - Friction stress tests (slippage & fees)
- * - Calibration metrics & Brier score
+ * - Historical data range selector & strategy logic switcher
+ * - Detailed performance report comparing active strategy against passive benchmark
+ * - Recharts equity curve comparison & out-of-sample stress testing
  */
 
 import React, { useState } from 'react';
-import { backtester, BacktestSummary, CandidateQualificationReport } from '../quant/backtesting';
-import { Play, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import {
+  backtester,
+  BacktestSummary,
+  CandidateQualificationReport,
+  BacktestStrategyId,
+} from '../quant/backtesting';
+import { Play, ShieldCheck, CheckCircle2, Sliders, TrendingUp, Award, BarChart2 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+  CartesianGrid,
+} from 'recharts';
 
 export const BacktestTab: React.FC = () => {
   const [sessions, setSessions] = useState(120);
   const [slippage, setSlippage] = useState(0.5);
+  const [strategyId, setStrategyId] = useState<BacktestStrategyId>('SETTLEMENT-SKEW-DIR');
   const [isSimulating, setIsSimulating] = useState(false);
+
   const [result, setResult] = useState<{
     trainSummary: BacktestSummary;
     outOfSampleSummary: BacktestSummary;
+    benchmarkSummary: BacktestSummary;
     qualification: CandidateQualificationReport;
-  }>(() => backtester.runSimulation(120, 0.5));
+  }>(() => backtester.runSimulation(120, 0.5, 'SETTLEMENT-SKEW-DIR'));
 
   const handleRunBacktest = () => {
     setIsSimulating(true);
     setTimeout(() => {
-      const res = backtester.runSimulation(sessions, slippage);
+      const res = backtester.runSimulation(sessions, slippage, strategyId);
       setResult(res);
       setIsSimulating(false);
-    }, 200);
+    }, 250);
   };
 
   const oos = result.outOfSampleSummary;
   const train = result.trainSummary;
+  const bench = result.benchmarkSummary;
+  const qual = result.qualification;
+
+  // Merge equity curves for Recharts comparison
+  const maxLen = Math.max(oos.equityCurve.length, bench.equityCurve.length);
+  const mergedEquityCurve = Array.from({ length: maxLen }, (_, i) => {
+    const stratPoint = oos.equityCurve[i];
+    const benchPoint = bench.equityCurve[i];
+    return {
+      step: i + 1,
+      Strategy: stratPoint ? stratPoint.cumulativeNetPnl : oos.equityCurve[oos.equityCurve.length - 1]?.cumulativeNetPnl || 0,
+      'Passive Benchmark': benchPoint ? benchPoint.cumulativeNetPnl : bench.equityCurve[bench.equityCurve.length - 1]?.cumulativeNetPnl || 0,
+    };
+  });
 
   return (
-    <div className="space-y-6">
-      {/* 1. Header & Controls */}
-      <div className="p-4 bg-neutral-900/60 rounded-xl border border-neutral-800/80 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h2 className="text-base font-bold text-white">
-            Chronological Walk-Forward Backtester & Validator
-          </h2>
-          <p className="mt-1 text-xs text-neutral-400 max-w-2xl leading-relaxed">
-            Evaluates prediction market strategies without future lookahead. The final 30% of chronological sessions are kept completely untouched as out-of-sample data with full fee and slippage modeling.
-          </p>
-        </div>
-
-        {/* Parameter adjustments */}
-        <div className="flex flex-wrap items-center gap-4 text-xs">
+    <div className="space-y-6 text-xs text-neutral-300">
+      {/* 1. Header & Configuration Controls */}
+      <div className="p-5 bg-neutral-900/80 rounded-2xl border border-neutral-800 shadow-xl space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-neutral-800">
           <div>
-            <label className="block text-neutral-400 text-[11px] mb-1 font-medium">
-              15-Min Sessions
-            </label>
-            <input
-              type="number"
-              min="30"
-              max="500"
-              step="30"
-              value={sessions}
-              onChange={(e) => setSessions(parseInt(e.target.value) || 120)}
-              className="w-24 px-2.5 py-1.5 bg-neutral-950 border border-neutral-800 rounded font-mono text-white"
-            />
+            <h2 className="text-base font-bold text-white flex items-center gap-2">
+              <BarChart2 className="w-5 h-5 text-cyan-400" />
+              <span>Systematic Walk-Forward Backtesting Engine</span>
+            </h2>
+            <p className="mt-1 text-xs text-neutral-400 max-w-3xl leading-relaxed">
+              Run leak-free chronological simulations over historical 15-minute prediction market sessions. Test specific quantitative strategy logic against a passive buy-and-hold benchmark with full fee and slippage friction modeling.
+            </p>
           </div>
 
+          <button
+            onClick={handleRunBacktest}
+            disabled={isSimulating}
+            className="flex items-center gap-2 px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-colors shadow-lg shadow-cyan-950/40"
+          >
+            <Play className="w-4 h-4 fill-current" />
+            <span>{isSimulating ? 'Executing Simulation...' : 'Run Backtest Simulation'}</span>
+          </button>
+        </div>
+
+        {/* Configuration Parameter Bar */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
+          {/* Strategy Logic Selector */}
           <div>
-            <label className="block text-neutral-400 text-[11px] mb-1 font-medium">
-              Stress Slippage (cents)
+            <label className="block text-neutral-400 text-[11px] mb-1.5 font-semibold uppercase tracking-wider">
+              Strategy Logic
+            </label>
+            <select
+              value={strategyId}
+              onChange={(e) => setStrategyId(e.target.value as BacktestStrategyId)}
+              className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-xl font-mono text-white text-xs focus:outline-none focus:border-cyan-500"
+            >
+              <option value="SETTLEMENT-SKEW-DIR">Settlement Skew Directional</option>
+              <option value="BTC-LEADLAG-SCALP">Lead-Lag Micro Scalp</option>
+              <option value="VOL-RANGE-REVERSAL">Volatility Range Reversal</option>
+            </select>
+          </div>
+
+          {/* Historical Data Range */}
+          <div>
+            <label className="block text-neutral-400 text-[11px] mb-1.5 font-semibold uppercase tracking-wider">
+              Historical Session Range
+            </label>
+            <select
+              value={sessions}
+              onChange={(e) => setSessions(parseInt(e.target.value) || 120)}
+              className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-xl font-mono text-white text-xs focus:outline-none focus:border-cyan-500"
+            >
+              <option value="50">50 Sessions (~12.5 Hours)</option>
+              <option value="120">120 Sessions (~30 Hours)</option>
+              <option value="250">250 Sessions (~2.5 Days)</option>
+              <option value="500">500 Sessions (~5.2 Days)</option>
+            </select>
+          </div>
+
+          {/* Stress Slippage */}
+          <div>
+            <label className="block text-neutral-400 text-[11px] mb-1.5 font-semibold uppercase tracking-wider">
+              Execution Stress Slippage
             </label>
             <select
               value={slippage}
               onChange={(e) => setSlippage(parseFloat(e.target.value))}
-              className="px-2.5 py-1.5 bg-neutral-950 border border-neutral-800 rounded font-mono text-white text-xs"
+              className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-xl font-mono text-white text-xs focus:outline-none focus:border-cyan-500"
             >
-              <option value="0.0">0.0¢ (Zero Slip)</option>
-              <option value="0.5">0.5¢ (Nominal)</option>
-              <option value="1.0">1.0¢ (Adverse)</option>
-              <option value="2.0">2.0¢ (Extreme Shock)</option>
+              <option value="0.0">0.0¢ (Zero Friction)</option>
+              <option value="0.5">0.5¢ (Nominal Taker)</option>
+              <option value="1.0">1.0¢ (Adverse Impact)</option>
+              <option value="2.0">2.0¢ (Severe Vol Shock)</option>
             </select>
-          </div>
-
-          <div className="self-end">
-            <button
-              onClick={handleRunBacktest}
-              disabled={isSimulating}
-              className="flex items-center gap-1.5 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white font-semibold rounded text-xs transition-colors"
-            >
-              <Play className="w-3.5 h-3.5 fill-current" />
-              <span>{isSimulating ? 'Simulating...' : 'Run Simulation'}</span>
-            </button>
           </div>
         </div>
       </div>
 
-      {/* 2. Side-by-side In-Sample vs Out-of-Sample Performance */}
+      {/* 2. Side-by-Side Performance Comparison Report (Strategy vs Benchmark) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* In-Sample Training Card */}
-        <div className="p-4 bg-neutral-900/50 rounded-xl border border-neutral-800">
-          <div className="flex items-center justify-between pb-2 border-b border-neutral-800 text-xs">
-            <span className="font-semibold text-neutral-200">
-              In-Sample Training (First 70% Chronological)
-            </span>
-            <span className="font-mono text-neutral-400">{train.totalTrades} trades</span>
+        {/* Active Strategy Card (Out-of-Sample) */}
+        <div className="p-5 bg-neutral-900/80 rounded-2xl border border-cyan-800/60 shadow-xl space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse" />
+              <span className="font-bold text-white text-sm">{oos.strategyName}</span>
+            </div>
+            <span className="font-mono text-xs text-neutral-400">{oos.totalTrades} Trades Executed</span>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 mt-3 text-xs">
-            <div className="p-2.5 bg-neutral-950/60 rounded border border-neutral-800">
-              <span className="text-neutral-500 block text-[11px]">Net P&L (after fees)</span>
-              <span className="font-mono tabular-nums font-bold text-emerald-400 text-sm">
-                ${train.netPnlDollars.toFixed(2)}
-              </span>
-            </div>
-            <div className="p-2.5 bg-neutral-950/60 rounded border border-neutral-800">
-              <span className="text-neutral-500 block text-[11px]">Net Expectancy</span>
-              <span className="font-mono tabular-nums font-bold text-neutral-200 text-sm">
-                +{train.netExpectancyPerTradeCents}¢ / contract
-              </span>
-            </div>
-            <div className="p-2.5 bg-neutral-950/60 rounded border border-neutral-800">
-              <span className="text-neutral-500 block text-[11px]">Win Rate</span>
-              <span className="font-mono tabular-nums text-neutral-200">
-                {train.winRatePct}%
-              </span>
-            </div>
-            <div className="p-2.5 bg-neutral-950/60 rounded border border-neutral-800">
-              <span className="text-neutral-500 block text-[11px]">Profit Factor</span>
-              <span className="font-mono tabular-nums text-neutral-200">
-                {train.profitFactor.toFixed(2)}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Untouched Out-of-Sample Test Card */}
-        <div className="p-4 bg-neutral-900/70 rounded-xl border border-cyan-800/80 shadow-md shadow-cyan-950/10">
-          <div className="flex items-center justify-between pb-2 border-b border-neutral-800 text-xs">
-            <span className="font-semibold text-cyan-400">
-              Untouched Out-of-Sample (Last 30% Unseen)
-            </span>
-            <span className="font-mono text-neutral-400">{oos.totalTrades} trades</span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 mt-3 text-xs">
-            <div className="p-2.5 bg-neutral-950/60 rounded border border-neutral-800">
-              <span className="text-neutral-500 block text-[11px]">Net P&L (after fees)</span>
-              <span className="font-mono tabular-nums font-bold text-emerald-400 text-sm">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="p-3 bg-neutral-950/80 rounded-xl border border-neutral-800">
+              <span className="text-neutral-500 block text-[11px]">Net P&L (after $0.03/ct fees)</span>
+              <span className="font-mono tabular-nums font-bold text-emerald-400 text-base">
                 ${oos.netPnlDollars.toFixed(2)}
               </span>
             </div>
-            <div className="p-2.5 bg-neutral-950/60 rounded border border-neutral-800">
+            <div className="p-3 bg-neutral-950/80 rounded-xl border border-neutral-800">
               <span className="text-neutral-500 block text-[11px]">Net Expectancy</span>
-              <span className="font-mono tabular-nums font-bold text-cyan-400 text-sm">
-                +{oos.netExpectancyPerTradeCents}¢ / contract
+              <span className="font-mono tabular-nums font-bold text-cyan-300 text-base">
+                +{oos.netExpectancyPerTradeCents}¢ / ct
               </span>
             </div>
-            <div className="p-2.5 bg-neutral-950/60 rounded border border-neutral-800">
+            <div className="p-3 bg-neutral-950/80 rounded-xl border border-neutral-800">
               <span className="text-neutral-500 block text-[11px]">Win Rate</span>
-              <span className="font-mono tabular-nums text-neutral-200">{oos.winRatePct}%</span>
+              <span className="font-mono tabular-nums text-white font-semibold text-sm">
+                {oos.winRatePct}%
+              </span>
             </div>
-            <div className="p-2.5 bg-neutral-950/60 rounded border border-neutral-800">
-              <span className="text-neutral-500 block text-[11px]">Brier Score</span>
-              <span className="font-mono tabular-nums text-emerald-400 font-semibold">
+            <div className="p-3 bg-neutral-950/80 rounded-xl border border-neutral-800">
+              <span className="text-neutral-500 block text-[11px]">Profit Factor</span>
+              <span className="font-mono tabular-nums text-white font-semibold text-sm">
+                {oos.profitFactor.toFixed(2)}
+              </span>
+            </div>
+            <div className="p-3 bg-neutral-950/80 rounded-xl border border-neutral-800">
+              <span className="text-neutral-500 block text-[11px]">Max Drawdown</span>
+              <span className="font-mono tabular-nums text-rose-400 font-semibold text-sm">
+                -{oos.maxDrawdownPct}%
+              </span>
+            </div>
+            <div className="p-3 bg-neutral-950/80 rounded-xl border border-neutral-800">
+              <span className="text-neutral-500 block text-[11px]">Brier Score (Calibration)</span>
+              <span className="font-mono tabular-nums text-emerald-400 font-bold text-sm">
                 {oos.brierScore.toFixed(3)}
               </span>
             </div>
           </div>
         </div>
+
+        {/* Passive Benchmark Card */}
+        <div className="p-5 bg-neutral-900/60 rounded-2xl border border-neutral-800 shadow-xl space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-neutral-500" />
+              <span className="font-bold text-neutral-300 text-sm">Passive Buy & Hold Benchmark</span>
+            </div>
+            <span className="font-mono text-xs text-neutral-400">{bench.totalTrades} Trades Executed</span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="p-3 bg-neutral-950/80 rounded-xl border border-neutral-800">
+              <span className="text-neutral-500 block text-[11px]">Net P&L (after fees)</span>
+              <span className={`font-mono tabular-nums font-bold text-base ${bench.netPnlDollars >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                ${bench.netPnlDollars.toFixed(2)}
+              </span>
+            </div>
+            <div className="p-3 bg-neutral-950/80 rounded-xl border border-neutral-800">
+              <span className="text-neutral-500 block text-[11px]">Net Expectancy</span>
+              <span className="font-mono tabular-nums font-bold text-neutral-300 text-base">
+                {bench.netExpectancyPerTradeCents >= 0 ? '+' : ''}{bench.netExpectancyPerTradeCents}¢ / ct
+              </span>
+            </div>
+            <div className="p-3 bg-neutral-950/80 rounded-xl border border-neutral-800">
+              <span className="text-neutral-500 block text-[11px]">Win Rate</span>
+              <span className="font-mono tabular-nums text-neutral-300 font-semibold text-sm">
+                {bench.winRatePct}%
+              </span>
+            </div>
+            <div className="p-3 bg-neutral-950/80 rounded-xl border border-neutral-800">
+              <span className="text-neutral-500 block text-[11px]">Profit Factor</span>
+              <span className="font-mono tabular-nums text-neutral-300 font-semibold text-sm">
+                {bench.profitFactor.toFixed(2)}
+              </span>
+            </div>
+            <div className="p-3 bg-neutral-950/80 rounded-xl border border-neutral-800">
+              <span className="text-neutral-500 block text-[11px]">Max Drawdown</span>
+              <span className="font-mono tabular-nums text-rose-400/80 font-semibold text-sm">
+                -{bench.maxDrawdownPct}%
+              </span>
+            </div>
+            <div className="p-3 bg-neutral-950/80 rounded-xl border border-neutral-800">
+              <span className="text-neutral-500 block text-[11px]">Alpha vs Benchmark</span>
+              <span className="font-mono tabular-nums text-cyan-400 font-bold text-sm">
+                +{(oos.netPnlDollars - bench.netPnlDollars).toFixed(2)} USD
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* 3. Out-of-Sample Trade Ledger */}
-      <div className="p-4 bg-neutral-900/50 rounded-xl border border-neutral-800">
-        <div className="flex items-center justify-between pb-3 border-b border-neutral-800 text-xs">
-          <span className="font-semibold text-white">Out-of-Sample Simulated Executions</span>
-          <span className="text-neutral-400 font-mono text-[11px]">
-            Stress Slippage: {slippage}¢ · Taker Fee: $0.03/ct
+      {/* 3. Equity Curve Comparison Recharts Chart */}
+      <div className="p-5 bg-neutral-900/80 rounded-2xl border border-neutral-800 shadow-xl space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 text-cyan-400" />
+            <span className="font-bold text-white text-xs uppercase tracking-wider">
+              Cumulative Equity Curve ($ Net P&L): Strategy vs. Passive Benchmark
+            </span>
+          </div>
+          <span className="text-[11px] font-mono text-neutral-400">Chronological Progression</span>
+        </div>
+
+        <div className="h-64 w-full pt-2">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={mergedEquityCurve}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#26262a" />
+              <XAxis dataKey="step" stroke="#737373" fontSize={11} tickLine={false} />
+              <YAxis stroke="#737373" fontSize={11} tickLine={false} unit="$" />
+              <Tooltip
+                contentStyle={{ backgroundColor: '#0a0a0c', borderColor: '#26262a', borderRadius: '0.75rem', color: '#fff', fontSize: '11px' }}
+              />
+              <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
+              <Line type="monotone" dataKey="Strategy" stroke="#06b6d4" strokeWidth={2.5} dot={false} />
+              <Line type="monotone" dataKey="Passive Benchmark" stroke="#737373" strokeWidth={1.5} strokeDasharray="4 4" dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* 4. Candidate Qualification Gates */}
+      <div className="p-5 bg-neutral-900/80 rounded-2xl border border-neutral-800 shadow-xl space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-5 h-5 text-emerald-400" />
+            <span className="font-bold text-white text-xs uppercase tracking-wider">
+              Candidate Qualification Gatekeeper Report ({qual.candidateVersion})
+            </span>
+          </div>
+          <span
+            className={`px-2.5 py-1 text-[11px] font-mono font-bold rounded-lg border ${
+              qual.isQualifiedForDeployment
+                ? 'bg-emerald-950/80 border-emerald-600 text-emerald-300'
+                : 'bg-rose-950/80 border-rose-600 text-rose-300'
+            }`}
+          >
+            {qual.isQualifiedForDeployment ? 'PASSED ALL DEPLOYMENT GATES' : 'GATE FAILED - REQUIRES TUNING'}
           </span>
         </div>
 
-        <div className="overflow-x-auto mt-3">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-neutral-800 text-neutral-400 font-medium text-[11px]">
-                <th className="py-2 px-2">Trade ID</th>
-                <th className="py-2 px-2">Side</th>
-                <th className="py-2 px-2 text-right">Entry Price</th>
-                <th className="py-2 px-2 text-right">Settlement Price</th>
-                <th className="py-2 px-2 text-right">Model P(Win)</th>
-                <th className="py-2 px-2 text-right">Outcome</th>
-                <th className="py-2 px-2 text-right">Fees Paid</th>
-                <th className="py-2 px-2 text-right">Net PnL</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-800/60 font-mono text-[11px]">
-              {oos.trades.slice(0, 10).map((t) => (
-                <tr key={t.tradeId} className="hover:bg-neutral-800/30">
-                  <td className="py-2 px-2 text-neutral-300">{t.tradeId}</td>
-                  <td className="py-2 px-2">
-                    <span className={t.side === 'YES' ? 'text-emerald-400' : 'text-rose-400'}>
-                      {t.side}
-                    </span>
-                  </td>
-                  <td className="py-2 px-2 text-right text-neutral-200">{t.entryPriceCents}¢</td>
-                  <td className="py-2 px-2 text-right text-neutral-200">{t.exitPriceCents}¢</td>
-                  <td className="py-2 px-2 text-right text-neutral-300">
-                    {(t.predictedProbability * 100).toFixed(1)}%
-                  </td>
-                  <td className="py-2 px-2 text-right">
-                    <span
-                      className={`font-semibold ${
-                        t.actualSettlementOutcome === 1 ? 'text-emerald-400' : 'text-neutral-500'
-                      }`}
-                    >
-                      {t.actualSettlementOutcome === 1 ? 'WIN' : 'LOSS'}
-                    </span>
-                  </td>
-                  <td className="py-2 px-2 text-right text-neutral-400">${t.feePaidDollars.toFixed(2)}</td>
-                  <td
-                    className={`py-2 px-2 text-right font-semibold ${
-                      t.netPnlDollars >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                    }`}
-                  >
-                    ${t.netPnlDollars.toFixed(2)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {qual.gateChecks.map((gate, idx) => (
+            <div
+              key={idx}
+              className={`p-3.5 rounded-xl border flex flex-col justify-between space-y-2 ${
+                gate.passed
+                  ? 'bg-neutral-950/90 border-neutral-800'
+                  : 'bg-rose-950/20 border-rose-900/60'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <span className="font-semibold text-white">{gate.rule}</span>
+                {gate.passed ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                ) : (
+                  <span className="text-rose-400 text-[10px] font-mono font-bold">FAILED</span>
+                )}
+              </div>
+              <p className="text-[11px] text-neutral-400 font-mono leading-relaxed">
+                {gate.detail}
+              </p>
+            </div>
+          ))}
         </div>
       </div>
     </div>

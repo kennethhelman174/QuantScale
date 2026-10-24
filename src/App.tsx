@@ -18,12 +18,27 @@ import { BacktestTab } from './components/BacktestTab';
 import { DiagnosticsTab } from './components/DiagnosticsTab';
 import { RunbookTab } from './components/RunbookTab';
 import { SafeguardsModal } from './components/SafeguardsModal';
+import { VolatilityAlertToast } from './components/VolatilityAlertToast';
+import { KalshiSetupWizard } from './components/KalshiSetupWizard';
+import { PaperWalletTab } from './components/PaperWalletTab';
+import { KalshiApiCredentials } from './services/kalshiClient';
 import { Footer } from './components/Footer';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('overview');
   const [isSafeguardsOpen, setIsSafeguardsOpen] = useState(false);
+  const [safeguardsTab, setSafeguardsTab] = useState<'safeguards' | 'alerts'>('safeguards');
+  const [isSetupWizardOpen, setIsSetupWizardOpen] = useState(false);
   const [isKiosk, setIsKiosk] = useState(false);
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    return (localStorage.getItem('quantscale_theme') as 'dark' | 'light') || 'dark';
+  });
+
+  const handleToggleTheme = () => {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(nextTheme);
+    localStorage.setItem('quantscale_theme', nextTheme);
+  };
 
   // Subscribe to real-time engine state changes
   const [, setTick] = useState(0);
@@ -85,7 +100,7 @@ export default function App() {
   };
 
   return (
-    <div className={`min-h-screen bg-[#0a0a0c] text-neutral-100 flex flex-col font-sans selection:bg-cyan-500 selection:text-black ${isKiosk ? 'p-2' : ''}`}>
+    <div className={`min-h-screen transition-colors duration-200 ${theme === 'light' ? 'theme-light bg-slate-50 text-slate-900' : 'bg-[#0a0a0c] text-neutral-100'} flex flex-col font-sans selection:bg-cyan-500 selection:text-black ${isKiosk ? 'p-2' : ''}`}>
       {/* Top Bar Navigation */}
       <Navbar
         activeTab={activeTab}
@@ -95,9 +110,23 @@ export default function App() {
         onToggleEngine={handleToggleEngine}
         isAutoTrading={tradingEngine.isAutoTrading}
         onToggleAutoTrading={() => tradingEngine.toggleAutoTrading()}
-        onOpenSafeguards={() => setIsSafeguardsOpen(true)}
+        onOpenSafeguards={(tab = 'safeguards') => {
+          setSafeguardsTab(tab);
+          setIsSafeguardsOpen(true);
+        }}
+        onOpenSetupWizard={() => setIsSetupWizardOpen(true)}
         isKiosk={isKiosk}
         onToggleKiosk={() => setIsKiosk(!isKiosk)}
+        theme={theme}
+        onToggleTheme={handleToggleTheme}
+      />
+
+      {/* Floating Volatility & Price-Action Visual Alert Toasts */}
+      <VolatilityAlertToast
+        onOpenAlertSettings={() => {
+          setSafeguardsTab('alerts');
+          setIsSafeguardsOpen(true);
+        }}
       />
 
       {/* Main Content Area */}
@@ -131,7 +160,17 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'strategies' && <StrategiesTab />}
+        {activeTab === 'strategies' && (
+          <StrategiesTab
+            decisionVolMetric={tradingEngine.decisionVolMetric}
+            onSetDecisionVolMetric={(m) => tradingEngine.setDecisionVolMetric(m)}
+            spotHistory={tradingEngine.spotHistory}
+            candles={tradingEngine.candles}
+            currentSpotPrice={tradingEngine.currentSpotPrice}
+            autoTradingMode={tradingEngine.autoTradingMode}
+            onSetAutoTradingMode={(m) => tradingEngine.setAutoTradingMode(m)}
+          />
+        )}
 
         {activeTab === 'research' && (
           <ResearchTab
@@ -151,14 +190,17 @@ export default function App() {
         )}
 
         {activeTab === 'runbook' && <RunbookTab />}
+
+        {activeTab === 'wallet' && <PaperWalletTab />}
       </main>
 
       {/* Mandatory Footer with Version Display */}
       <Footer />
 
-      {/* Emergency Safeguards Modal */}
+      {/* Emergency Safeguards & Volatility Alerts Modal */}
       <SafeguardsModal
         isOpen={isSafeguardsOpen}
+        initialTab={safeguardsTab}
         onClose={() => setIsSafeguardsOpen(false)}
         currentMode={tradingEngine.mode}
         isPaused={tradingEngine.riskManager.isPaused()}
@@ -175,6 +217,26 @@ export default function App() {
         onUpdateRiskLimits={(limits) => {
           tradingEngine.riskManager.updateLimits(limits);
           tradingEngine.logDiagnostic('INFO', 'RISK_GATE', 'Updated portfolio financial limits');
+        }}
+      />
+
+      {/* Kalshi API Setup Wizard Modal */}
+      <KalshiSetupWizard
+        isOpen={isSetupWizardOpen}
+        onClose={() => setIsSetupWizardOpen(false)}
+        currentCredentials={tradingEngine.dataCollector.getCredentials()}
+        onSaveCredentials={async (creds: KalshiApiCredentials) => {
+          tradingEngine.dataCollector.setCredentials(creds);
+          if (creds.environment !== 'PAPER') {
+            tradingEngine.mode = creds.environment === 'LIVE' ? 'LIVE' : 'DEMO';
+          }
+          const res = await tradingEngine.dataCollector.testConnectivity();
+          tradingEngine.logDiagnostic(
+            res.isSuccess ? 'INFO' : 'WARN',
+            'MARKET_DATA',
+            `API Setup Wizard tested credentials against Kalshi gateway: ${res.message}`
+          );
+          return res;
         }}
       />
     </div>

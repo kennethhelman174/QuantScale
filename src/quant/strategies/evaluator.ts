@@ -17,6 +17,8 @@ import { calculateBinaryPrice, calculateExpectedNetValue } from '../binaryPricin
 import { analyzeMicrostructure } from '../microstructure';
 import { STRATEGY_CATALOG } from './strategyDefinitions';
 
+export type DecisionVolMetric = 'REALIZED_15M' | 'PARKINSON_HL' | 'GARMAN_KLASS_OHLC';
+
 export interface EvaluationContext {
   market: Kalshi15MMarket;
   book: KalshiOrderBook;
@@ -25,6 +27,9 @@ export interface EvaluationContext {
   riskState: PortfolioRiskState;
   maxDataAgeMs: number;
   profile?: 'ACTIVE' | 'BALANCED' | 'CONSERVATIVE';
+  decisionVolMetric?: DecisionVolMetric;
+  parkinsonVol?: number;
+  garmanKlassVol?: number;
 }
 
 export class StrategyEvaluator {
@@ -126,9 +131,21 @@ export class StrategyEvaluator {
     }
 
     // Micro-momentum calculation from spot BTC
-    // Return over 15-30s normalized by rolling 15m volatility
+    // Return over 15-30s normalized by selected volatility metric
     const return30s = ctx.spot.return30s;
-    const vol = Math.max(ctx.spot.realizedVol15m, 0.25);
+    
+    // Select volatility based on decisionVolMetric
+    let vol = ctx.spot.realizedVol15m;
+    let volMetricLabel = '15m Realized Vol';
+    if (ctx.decisionVolMetric === 'PARKINSON_HL' && ctx.parkinsonVol) {
+      vol = ctx.parkinsonVol;
+      volMetricLabel = 'Parkinson HL Vol';
+    } else if (ctx.decisionVolMetric === 'GARMAN_KLASS_OHLC' && ctx.garmanKlassVol) {
+      vol = ctx.garmanKlassVol;
+      volMetricLabel = 'Garman-Klass Vol';
+    }
+    vol = Math.max(vol, 0.20);
+
     // 30 seconds as fraction of a year (31,557,600 s)
     const dtYear = 30 / 31557600;
     const std30s = vol * Math.sqrt(dtYear);
@@ -137,7 +154,7 @@ export class StrategyEvaluator {
     const zThresh = profile === 'ACTIVE' ? 0.9 : profile === 'BALANCED' ? 1.35 : 1.7;
     const minEdgeCents = profile === 'ACTIVE' ? 1.0 : profile === 'BALANCED' ? 1.5 : strategy.executionConditions.minAlphaEdgeCents;
 
-    // Binary pricing calculation
+    // Binary pricing calculation using decision volatility
     const pricer = calculateBinaryPrice({
       spotPrice: ctx.spot.price,
       strikePrice: ctx.market.strikePrice,
@@ -277,11 +294,19 @@ export class StrategyEvaluator {
       };
     }
 
+    let skewVol = ctx.spot.realizedVol15m;
+    if (ctx.decisionVolMetric === 'PARKINSON_HL' && ctx.parkinsonVol) {
+      skewVol = ctx.parkinsonVol;
+    } else if (ctx.decisionVolMetric === 'GARMAN_KLASS_OHLC' && ctx.garmanKlassVol) {
+      skewVol = ctx.garmanKlassVol;
+    }
+    skewVol = Math.max(skewVol, 0.20);
+
     const pricer = calculateBinaryPrice({
       spotPrice: ctx.spot.price,
       strikePrice: ctx.market.strikePrice,
       timeToExpirySec: timeRemainingSec,
-      annualizedVol: ctx.spot.realizedVol15m,
+      annualizedVol: skewVol,
     });
 
     const bestYesAsk = ctx.book.yesAsks[0]?.price || 99;

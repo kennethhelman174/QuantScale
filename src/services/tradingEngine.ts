@@ -22,11 +22,18 @@ import {
   Position,
   StrategyDecision,
 } from '../types/market';
-import { calculateBinaryPrice, calculateRealizedVol } from '../quant/binaryPricing';
+import {
+  calculateBinaryPrice,
+  calculateRealizedVol,
+  calculateParkinsonVol,
+  calculateGarmanKlassVol,
+} from '../quant/binaryPricing';
 import { KalshiExecutionSimulator } from '../quant/simulator';
 import { PortfolioRiskManager } from '../quant/portfolioRisk';
-import { StrategyEvaluator } from '../quant/strategies/evaluator';
+import { StrategyEvaluator, DecisionVolMetric } from '../quant/strategies/evaluator';
 import { KalshiDataCollector } from './kalshiClient';
+import { alertManager } from './alertManager';
+import { LiveDataManager, LiveMarketPacket } from './liveDataManager';
 
 export class TradingEngine {
   public mode: ExecutionMode = 'PAPER';
@@ -34,6 +41,7 @@ export class TradingEngine {
   public riskManager: PortfolioRiskManager;
   public simulator: KalshiExecutionSimulator;
   public evaluator: StrategyEvaluator;
+  public liveDataManager: LiveDataManager;
 
   // Real-time market state
   public currentSpotPrice = 68450.0;
@@ -41,6 +49,9 @@ export class TradingEngine {
   public candles: Candle[] = [];
   public currentMarket: Kalshi15MMarket;
   public currentBook: KalshiOrderBook;
+
+  // Decision logic volatility metric configuration
+  public decisionVolMetric: DecisionVolMetric = 'REALIZED_15M';
 
   // Trading state
   public orders: Order[] = [];
@@ -56,6 +67,22 @@ export class TradingEngine {
   public lastAutoTradeTime: number | null = null;
   public lastAutoTradeSummary: string = 'Automated trading engine active. Scanning 15m order book and spot latency...';
 
+  public setDecisionVolMetric(metric: DecisionVolMetric) {
+    this.decisionVolMetric = metric;
+    const label =
+      metric === 'PARKINSON_HL'
+        ? 'Parkinson High-Low Volatility'
+        : metric === 'GARMAN_KLASS_OHLC'
+        ? 'Garman-Klass OHLC Volatility'
+        : '15-Minute Rolling Realized Volatility';
+    this.logDiagnostic(
+      'INFO',
+      'MARKET_DATA',
+      `Strategy decision volatility metric updated to: [${label}]`
+    );
+    this.notify();
+  }
+
   // Engine loop
   private intervalId: NodeJS.Timeout | null = null;
   private isRunning = false;
@@ -67,6 +94,7 @@ export class TradingEngine {
     this.riskManager = new PortfolioRiskManager();
     this.simulator = new KalshiExecutionSimulator();
     this.evaluator = new StrategyEvaluator();
+    this.liveDataManager = new LiveDataManager(this.dataCollector);
 
     // Seed initial historical close prices and candles
     this.seedInitialHistory();
@@ -126,6 +154,9 @@ export class TradingEngine {
     this.isRunning = true;
     this.logDiagnostic('INFO', 'ORDER_ROUTING', 'Market data feed and execution engine started.');
 
+    // Connect Live Data Manager (WebSocket / REST live integration)
+    this.liveDataManager.connect(this.currentMarket.ticker);
+
     this.intervalId = setInterval(() => {
       this.tick();
     }, 1000); // 1-second tick cadence
@@ -136,6 +167,7 @@ export class TradingEngine {
       clearInterval(this.intervalId);
       this.intervalId = null;
     }
+    this.liveDataManager.disconnect();
     this.isRunning = false;
     this.logDiagnostic('INFO', 'ORDER_ROUTING', 'Execution engine paused.');
     this.notify();
@@ -203,7 +235,7 @@ export class TradingEngine {
       );
     }
 
-    // 3. Compute Realized Volatility & Spot momentum
+    // 3. Compute Realized Volatility, Parkinson Vol, Garman-Klass Vol & Spot momentum
     const recent30Prices = this.spotHistory.slice(-30);
     const return30s =
       recent30Prices.length >= 2
@@ -211,6 +243,19 @@ export class TradingEngine {
         : 0;
 
     const realizedVol15m = calculateRealizedVol(this.spotHistory.slice(-30));
+    const parkinsonVol = calculateParkinsonVol(this.candles.slice(-30));
+    const garmanKlassVol = calculateGarmanKlassVol(this.candles.slice(-30));
+
+    // Run active price-action and volatility alert evaluation
+    alertManager.evaluate(this.currentSpotPrice, this.spotHistory, this.candles);
+
+    // Select active volatility metric governing decision logic & pricer
+    let activeDecisionVol = realizedVol15m;
+    if (this.decisionVolMetric === 'PARKINSON_HL') {
+      activeDecisionVol = parkinsonVol;
+    } else if (this.decisionVolMetric === 'GARMAN_KLASS_OHLC') {
+      activeDecisionVol = garmanKlassVol;
+    }
 
     const spotObs: BTCSpotObservation = {
       timestamp: now,
@@ -221,15 +266,15 @@ export class TradingEngine {
       return30s,
       return1m: return30s * 1.5,
       return5m: return30s * 2.8,
-      realizedVol15m,
+      realizedVol15m: activeDecisionVol,
     };
 
-    // 4. Compute exact Black-Scholes binary option fair price
+    // 4. Compute exact Black-Scholes binary option fair price using selected decision volatility
     const pricer = calculateBinaryPrice({
       spotPrice: this.currentSpotPrice,
       strikePrice: this.currentMarket.strikePrice,
       timeToExpirySec: this.currentMarket.settlementTimerSec,
-      annualizedVol: realizedVol15m,
+      annualizedVol: activeDecisionVol,
     });
 
     // 5. Update Kalshi order book
@@ -250,13 +295,16 @@ export class TradingEngine {
     // 7. Manage Existing Open Positions (trailing stops, take profits, thesis invalidation)
     this.manageOpenPositions(pricer.fairPriceYesCents, now);
 
-    // 8. Run Strategy Evaluator (Scalp & Directional Skew)
-    this.runStrategyEvaluation(spotObs);
+    // 8. Run Strategy Evaluator (Scalp & Directional Skew) using selected decision volatility
+    this.runStrategyEvaluation(spotObs, parkinsonVol, garmanKlassVol);
 
     // 9. Reconcile Risk & Capital
     for (const port of this.riskManager.getAllPortfolios()) {
       this.riskManager.updatePortfolioState(port.portfolioId, this.positions, this.orders);
     }
+
+    // 10. Evaluate Custom Price-Action & Volatility Alerts
+    alertManager.evaluate(this.currentSpotPrice, this.spotHistory, this.candles);
 
     this.notify();
   }
@@ -264,7 +312,11 @@ export class TradingEngine {
   /**
    * Evaluate strategies for Primary and Experimental portfolios
    */
-  private runStrategyEvaluation(spotObs: BTCSpotObservation) {
+  private runStrategyEvaluation(
+    spotObs: BTCSpotObservation,
+    parkinsonVol: number,
+    garmanKlassVol: number
+  ) {
     const primaryRisk = this.riskManager.getPortfolio('PRIMARY');
     if (!primaryRisk) return;
 
@@ -276,6 +328,9 @@ export class TradingEngine {
       riskState: primaryRisk,
       maxDataAgeMs: this.riskManager.getLimits().maxDataAgeMs,
       profile: this.autoTradingMode,
+      decisionVolMetric: this.decisionVolMetric,
+      parkinsonVol,
+      garmanKlassVol,
     };
 
     // 1. Evaluate Short-Horizon Lead-Lag Scalp

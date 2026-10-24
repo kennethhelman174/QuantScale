@@ -33,3 +33,135 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #3b4252;
 }
+
+/* Day Mode (Professional Light Theme) Overrides */
+.theme-light {
+  background-color: #f8fafc !important; /* Soft slate-50 canvas */
+  color: #0f172a !important; /* Dark slate-900 high contrast text */
+}
+
+.theme-light header {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+  border-bottom-color: #e2e8f0 !important;
+}
+
+/* Light mode card surfaces and container borders */
+.theme-light .bg-neutral-950,
+.theme-light .bg-neutral-950\/80,
+.theme-light .bg-neutral-950\/90,
+.theme-light .bg-neutral-950\/95,
+.theme-light .bg-neutral-900,
+.theme-light .bg-neutral-900\/80,
+.theme-light .bg-neutral-900\/60,
+.theme-light .bg-neutral-900\/40,
+.theme-light .bg-\[\#0a0a0c\] {
+  background-color: #ffffff !important; /* Crisp white card background */
+  color: #0f172a !important;
+}
+
+.theme-light .border-neutral-800,
+.theme-light .border-neutral-900,
+.theme-light .border-neutral-700 {
+  border-color: #e2e8f0 !important; /* Slate-200 hairline borders */
+}
+
+.theme-light .text-neutral-100,
+.theme-light .text-white {
+  color: #0f172a !important;
+}
+
+.theme-light .text-neutral-300,
+.theme-light .text-neutral-400 {
+  color: #334155 !important; /* Slate-700 readable body text */
+}
+
+.theme-light .text-neutral-500 {
+  color: #64748b !important; /* Slate-500 muted text */
+}
+
+/* Accents and badging contrast in Day Mode */
+.theme-light .text-cyan-400,
+.theme-light .text-cyan-300 {
+  color: #0284c7 !important; /* Sky-600 high contrast */
+}
+
+.theme-light .bg-cyan-950\/60,
+.theme-light .bg-cyan-950\/50,
+.theme-light .bg-cyan-950\/40,
+.theme-light .bg-cyan-950 {
+  background-color: #f0f9ff !important; /* Sky-50 */
+}
+
+.theme-light .border-cyan-800\/60,
+.theme-light .border-cyan-800 {
+  border-color: #bae6fd !important;
+}
+
+.theme-light .text-emerald-400,
+.theme-light .text-emerald-300 {
+  color: #059669 !important; /* Emerald-600 */
+}
+
+.theme-light .bg-emerald-950\/60,
+.theme-light .bg-emerald-950\/40,
+.theme-light .bg-emerald-950 {
+  background-color: #ecfdf5 !important; /* Emerald-50 */
+}
+
+.theme-light .border-emerald-800\/60,
+.theme-light .border-emerald-700\/60 {
+  border-color: #a7f3d0 !important;
+}
+
+.theme-light .text-rose-400,
+.theme-light .text-rose-300 {
+  color: #e11d48 !important; /* Rose-600 */
+}
+
+.theme-light .bg-rose-950\/60,
+.theme-light .bg-rose-950\/40,
+.theme-light .bg-rose-950 {
+  background-color: #fff1f2 !important; /* Rose-50 */
+}
+
+.theme-light .border-rose-800\/80,
+.theme-light .border-rose-800\/60,
+.theme-light .border-rose-800 {
+  border-color: #fecdd3 !important;
+}
+
+.theme-light .text-amber-400,
+.theme-light .text-amber-300 {
+  color: #d97706 !important; /* Amber-600 */
+}
+
+.theme-light .bg-amber-950\/80,
+.theme-light .bg-amber-950\/40,
+.theme-light .bg-amber-950 {
+  background-color: #fffbeb !important; /* Amber-50 */
+}
+
+/* Light Mode inputs and buttons */
+.theme-light input,
+.theme-light select,
+.theme-light textarea {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+.theme-light footer {
+  background-color: #ffffff !important;
+  border-top-color: #e2e8f0 !important;
+}
+
+/* Scrollbars in Day Mode */
+.theme-light ::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+.theme-light ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+}
+.theme-light ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}

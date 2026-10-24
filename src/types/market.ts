@@ -266,3 +266,5 @@ export interface DiagnosticBundle {
   modelMetrics: ModelQualificationMetric[];
   diagnostics: DiagnosticLogEntry[];
 }
+
+export * from './alerts';

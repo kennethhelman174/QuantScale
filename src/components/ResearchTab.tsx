@@ -13,6 +13,9 @@ import { ModelQualificationMetric, Position } from '../types/market';
 import { TimeSeriesObservationRecord } from '../services/kalshiClient';
 import { CheckCircle2, XCircle, AlertTriangle, RefreshCw } from 'lucide-react';
 import { VolatilityCorrelationHeatmap } from './VolatilityCorrelationHeatmap';
+import { TimeOfDayHeatmap } from './TimeOfDayHeatmap';
+import { DailyExecutionReport } from './DailyExecutionReport';
+import { VolatilitySpreadScatterPlot } from './VolatilitySpreadScatterPlot';
 
 interface ResearchTabProps {
   metrics: ModelQualificationMetric[];
@@ -119,6 +122,12 @@ export const ResearchTab: React.FC<ResearchTabProps> = ({
         observations={observations}
         spotHistory={spotHistory}
       />
+
+      {/* 3. Time-of-Day Liquidity Regime Heatmap */}
+      <TimeOfDayHeatmap positions={positions} />
+
+      {/* 4. Bitcoin Spot Volatility vs Kalshi Exit Spread Scatter Plot */}
+      <VolatilitySpreadScatterPlot positions={positions} />
 
       {/* 3. Candidate vs Incumbent Gatekeeper */}
       <div className="p-5 bg-neutral-900/50 rounded-xl border border-neutral-800 space-y-4">
@@ -278,6 +287,9 @@ export const ResearchTab: React.FC<ResearchTabProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Printable Daily Execution & Performance Report */}
+      <DailyExecutionReport positions={positions} />
     </div>
   );
 };

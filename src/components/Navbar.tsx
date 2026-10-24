@@ -4,9 +4,10 @@
  * [Brand Wordmark] — [Nav Links with whitespace-nowrap] — [Primary Action / Status Control]
  */
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { ExecutionMode } from '../types/market';
-import { ShieldAlert, Play, Pause } from 'lucide-react';
+import { ShieldAlert, Play, Pause, Bell, Sun, Moon } from 'lucide-react';
+import { alertManager } from '../services/alertManager';
 
 interface NavbarProps {
   activeTab: string;
@@ -16,9 +17,12 @@ interface NavbarProps {
   onToggleEngine: () => void;
   isAutoTrading: boolean;
   onToggleAutoTrading: () => void;
-  onOpenSafeguards: () => void;
+  onOpenSafeguards: (initialTab?: 'safeguards' | 'alerts') => void;
+  onOpenSetupWizard: () => void;
   isKiosk: boolean;
   onToggleKiosk: () => void;
+  theme?: 'dark' | 'light';
+  onToggleTheme?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -30,12 +34,31 @@ export const Navbar: React.FC<NavbarProps> = ({
   isAutoTrading,
   onToggleAutoTrading,
   onOpenSafeguards,
+  onOpenSetupWizard,
   isKiosk,
   onToggleKiosk,
+  theme = 'dark',
+  onToggleTheme,
 }) => {
+  const [activeAlertsCount, setActiveAlertsCount] = useState(
+    alertManager.getRules().filter((r) => r.isEnabled).length
+  );
+  const [hasFiringNotification, setHasFiringNotification] = useState(
+    alertManager.getActiveNotifications().length > 0
+  );
+
+  useEffect(() => {
+    const syncAlerts = () => {
+      setActiveAlertsCount(alertManager.getRules().filter((r) => r.isEnabled).length);
+      setHasFiringNotification(alertManager.getActiveNotifications().length > 0);
+    };
+    syncAlerts();
+    return alertManager.subscribe(syncAlerts);
+  }, []);
   const navItems = [
     { id: 'overview', label: 'Overview' },
     { id: 'positions', label: 'Positions' },
+    { id: 'wallet', label: 'Paper Wallet' },
     { id: 'strategies', label: 'Strategies' },
     { id: 'research', label: 'Research' },
     { id: 'portfolios', label: 'Portfolios' },
@@ -154,9 +177,62 @@ export const Navbar: React.FC<NavbarProps> = ({
           )}
         </button>
 
+        {/* Volatility Alerts Button */}
+        <button
+          onClick={() => onOpenSafeguards('alerts')}
+          title="Configure Custom BTC Volatility & Price-Action Alerts"
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded transition-colors whitespace-nowrap border ${
+            hasFiringNotification
+              ? 'bg-amber-950/80 border-amber-600 text-amber-300 animate-pulse'
+              : 'bg-cyan-950/40 border-cyan-800/60 text-cyan-300 hover:bg-cyan-900/60'
+          }`}
+        >
+          <Bell className={`w-3.5 h-3.5 ${hasFiringNotification ? 'text-amber-400' : 'text-cyan-400'}`} />
+          <span>Alerts</span>
+          {activeAlertsCount > 0 && (
+            <span className="px-1.5 py-0.2 text-[10px] font-mono rounded bg-cyan-900/80 text-cyan-200">
+              {activeAlertsCount}
+            </span>
+          )}
+        </button>
+
+        {/* API Setup Wizard Button */}
+        <button
+          onClick={onOpenSetupWizard}
+          title="Configure Kalshi API Credentials & Real-World Feed"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-cyan-300 bg-cyan-950/50 hover:bg-cyan-900/60 border border-cyan-800/60 rounded transition-colors whitespace-nowrap"
+        >
+          <span>API Setup</span>
+        </button>
+
+        {/* Theme Toggle Button (Dark / Day Mode) */}
+        {onToggleTheme && (
+          <button
+            onClick={onToggleTheme}
+            title={theme === 'dark' ? 'Switch to Day Mode (Professional Light Theme)' : 'Switch to High-Contrast Night Mode'}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded border transition-colors whitespace-nowrap ${
+              theme === 'light'
+                ? 'bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200'
+                : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:bg-neutral-800 hover:text-white'
+            }`}
+          >
+            {theme === 'dark' ? (
+              <>
+                <Sun className="w-3.5 h-3.5 text-amber-400" />
+                <span className="font-mono">Day Mode</span>
+              </>
+            ) : (
+              <>
+                <Moon className="w-3.5 h-3.5 text-slate-700" />
+                <span className="font-mono">Night Mode</span>
+              </>
+            )}
+          </button>
+        )}
+
         {/* Emergency Safeguards Button */}
         <button
-          onClick={onOpenSafeguards}
+          onClick={() => onOpenSafeguards('safeguards')}
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-300 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/60 rounded transition-colors whitespace-nowrap"
         >
           <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
