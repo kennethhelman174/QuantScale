@@ -33,9 +33,9 @@ export class KalshiPublicFeed {
   private lastBook:KalshiOrderBook|null=null;
   private lastError:string|null=null;
   private timer:ReturnType<typeof setInterval>|null=null;
-  private running=false;
   private inFlight=false;
-  constructor(private onUpdate:(market:Kalshi15MMarket,book:KalshiOrderBook)=>void){}
+  private lastTicker: string | null = null;
+  constructor(private onUpdate:(market:Kalshi15MMarket,book:KalshiOrderBook)=>void, private onRollover?:(previousTicker:string)=>void){}
   status(){return {market:this.activeMarket?.ticker||null, bookAgeMs:this.lastBook?Date.now()-this.lastBook.timestamp:null, source:this.lastBook?.source||null, error:this.lastError};}
   start(){if(this.timer)return;void this.poll();this.timer=setInterval(()=>void this.poll(),4000);}
   stop(){if(this.timer)clearInterval(this.timer);this.timer=null;this.activeMarket=null;this.lastBook=null;}
@@ -60,6 +60,8 @@ export class KalshiPublicFeed {
         const close=Date.parse(match.close_time!);
         const strike=Number(match.floor_strike??match.cap_strike);
         if(!Number.isFinite(strike)||strike<=0)throw Error('No exchange strike provided');
+        if(this.lastTicker && this.lastTicker!==match.ticker) this.onRollover?.(this.lastTicker);
+        this.lastTicker=match.ticker;
         this.activeMarket={ticker:match.ticker,title:match.title||match.ticker,strikePrice:strike,
           openTimestamp:Date.parse(match.open_time||'')||now,closeTimestamp:close,
           settlementTimerSec:Math.max(0,Math.floor((close-now)/1000)),status:'OPEN',
