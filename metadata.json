@@ -1,0 +1,6 @@
+{
+  "name": "K-Alpha: Kalshi BTC 15M Quant Platform",
+  "description": "Institutional-grade quantitative research, paper trading, and execution platform for Kalshi Bitcoin 15-minute binary prediction markets.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
