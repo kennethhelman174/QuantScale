@@ -15,7 +15,8 @@ db.exec(
   'CREATE TABLE IF NOT EXISTS engine_snapshot (id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL, updated_at INTEGER NOT NULL);' +
   'CREATE TABLE IF NOT EXISTS orders (id TEXT PRIMARY KEY, payload TEXT NOT NULL, updated_at INTEGER NOT NULL);' +
   'CREATE TABLE IF NOT EXISTS positions (id TEXT PRIMARY KEY, payload TEXT NOT NULL, updated_at INTEGER NOT NULL);' +
-  'CREATE TABLE IF NOT EXISTS accounted_positions (id TEXT PRIMARY KEY, pnl_cents INTEGER NOT NULL, created_at INTEGER NOT NULL);'
+  'CREATE TABLE IF NOT EXISTS accounted_positions (id TEXT PRIMARY KEY, pnl_cents INTEGER NOT NULL, created_at INTEGER NOT NULL);' +
+  'CREATE TABLE IF NOT EXISTS official_settlements (ticker TEXT PRIMARY KEY, outcome TEXT NOT NULL CHECK(outcome IN (\'yes\',\'no\')), exchange_status TEXT NOT NULL, observed_at INTEGER NOT NULL, payload TEXT NOT NULL);'
 );
 db.prepare('INSERT OR IGNORE INTO wallets VALUES (?, ?, ?, ?, ?, ?)').run('PAPER', 100000, 0, 100000, 0, Date.now());
 
@@ -95,6 +96,45 @@ export class ServerStore {
         db.exec('COMMIT');
       } catch (e) { db.exec('ROLLBACK'); throw e; }
     }
+  }
+  /** Store exchange-confirmed outcomes once, without altering any wallet/position.
+   * A different second result for the same ticker is an invariant violation.
+   */
+  public recordOfficialSettlement(observation: {
+    ticker: string; result: 'yes' | 'no' | null; state: string;
+    exchangeStatus: string | null; observedAt: number;
+  }): boolean {
+    if (observation.state !== 'CONFIRMED' || !['yes','no'].includes(String(observation.result)) ||
+        !['settled','finalized'].includes(String(observation.exchangeStatus)) ||
+        !/^KXBTC15M-[A-Za-z0-9-]+$/.test(observation.ticker) ||
+        !Number.isSafeInteger(observation.observedAt)) {
+      throw new Error('Refusing to record an unverified official settlement');
+    }
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      const existing = db.prepare('SELECT outcome FROM official_settlements WHERE ticker=?')
+        .get(observation.ticker) as { outcome: string } | undefined;
+      if (existing && existing.outcome !== observation.result) {
+        throw new Error('Conflicting official settlement for market ' + observation.ticker);
+      }
+      let inserted = false;
+      if (!existing) {
+        const info = db.prepare('INSERT INTO official_settlements(ticker,outcome,exchange_status,observed_at,payload) VALUES(?,?,?,?,?)')
+          .run(observation.ticker, observation.result!, observation.exchangeStatus!,
+               observation.observedAt, JSON.stringify(observation));
+        inserted = info.changes === 1;
+      }
+      db.exec('COMMIT');
+      return inserted;
+    } catch(e) { db.exec('ROLLBACK'); throw e; }
+  }
+  public listOfficialSettlements(): Array<{ticker:string;outcome:string;exchangeStatus:string;observedAt:number}> {
+    const rows = db.prepare('SELECT ticker,outcome,exchange_status,observed_at FROM official_settlements ORDER BY observed_at DESC LIMIT 100')
+      .all() as Array<Record<string,string | number>>;
+    return rows.map(row => ({
+      ticker:String(row.ticker),outcome:String(row.outcome),
+      exchangeStatus:String(row.exchange_status),observedAt:Number(row.observed_at)
+    }));
   }
   public close(): void { db.close(); }
 }
