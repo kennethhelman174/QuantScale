@@ -111,7 +111,10 @@ async function startServer() {
   // Observation-only exchange feed. Not connected to the order execution path.
   let exchangeMarket: Kalshi15MMarket | null = null;
   let exchangeBook: KalshiOrderBook | null = null;
-  const settlementObserver = new KalshiSettlementObserver();
+  const settlementObserver = new KalshiSettlementObserver(observation => {
+    // Immutable ledger of official outcomes, not a trading instruction.
+    dbEngine.recordOfficialSettlement(observation);
+  });
   const publicFeed = new KalshiPublicFeed((market, book) => {
     exchangeMarket = market;
     exchangeBook = book;
@@ -213,7 +216,7 @@ async function startServer() {
   }
 
   app.get('/api/kalshi/settlements', (_req: Request, res: Response) => {
-    res.json({settlements:settlementObserver.list(), observationOnly:true, payoutsApplied:false});
+    res.json({settlements:settlementObserver.list(), confirmedHistory:dbEngine.listOfficialSettlements(), observationOnly:true, payoutsApplied:false});
   });
 
   app.get('/api/kalshi/observation', (_req: Request, res: Response) => {
