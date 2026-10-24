@@ -186,7 +186,8 @@ async function startServer() {
     });
     tradingEngine.subscribe(persist);
     persist();
-    // Update checks/deployments run in a separate systemd timer, not inside the trading process.
+    // The in-process service only checks status. Deployment is handled by systemd.
+    githubUpdater.startAutoCheck();
   }
 
   // --- REST API ROUTES ---
@@ -396,6 +397,7 @@ async function startServer() {
   const shutdown = () => {
     console.log('[Server] Shutting down QuantScale server...');
     tradingEngine.stop();
+    githubUpdater.stopAutoCheck();
     persist();
     dbEngine.close();
     releaseEngineLock();
