@@ -314,13 +314,13 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
         </div>
         <div className="flex items-center gap-4 text-xs">
           <div className="flex items-center gap-1.5 text-neutral-400">
-            <span>Strike:</span>
+            <span>{market.contractType === 'INDEX_DIRECTION_15M' ? 'Contract:' : 'Strike:'}</span>
             <span className="font-mono text-amber-400 font-semibold">
-              ${market.strikePrice.toLocaleString()}
+              {market.contractType === 'INDEX_DIRECTION_15M' ? 'CF BRTI up/down' : `${market.strikePrice.toLocaleString()}`}
             </span>
           </div>
           <span className="text-neutral-700">·</span>
-          <div className="flex items-center gap-1.5 text-neutral-400">
+          {market.contractType !== 'INDEX_DIRECTION_15M' && <div className="flex items-center gap-1.5 text-neutral-400">
             <span>Distance to Strike:</span>
             <span
               className={`font-mono font-semibold ${
@@ -330,7 +330,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               {spotPrice >= market.strikePrice ? '+' : ''}
               {(spotPrice - market.strikePrice).toFixed(1)} USD
             </span>
-          </div>
+          </div>}
           <span className="text-neutral-700">·</span>
           <div className="flex items-center gap-1.5 text-neutral-400">
             <span>Time Left:</span>
