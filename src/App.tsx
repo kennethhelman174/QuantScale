@@ -43,6 +43,7 @@ export default function App() {
   const [backendConnected, setBackendConnected] = useState(false);
   const [verifiedMarket, setVerifiedMarket] = useState(false);
   const [backendRunning, setBackendRunning] = useState(false);
+  const [exchangeState, setExchangeState] = useState<{marketState:string;quoteState:string;nextOpen:string|null;referenceVerified:boolean}|null>(null);
   const controlsUnavailable = () => alert('Only authenticated backend trading controls are allowed. Browser-local trading is disabled.');
   // Subscribe to real-time central backend engine state changes via WebSocket
   const [, setTick] = useState(0);
@@ -67,6 +68,15 @@ export default function App() {
           try {
             const packet = JSON.parse(event.data);
             if (packet.type === 'TICK_UPDATE' || packet.type === 'STATE_SNAPSHOT' || packet.type === 'KALSHI_OBSERVATION') {
+              if (packet.feed) {
+                const feed = packet.feed;
+                setExchangeState({
+                  marketState:feed.marketState||'UNAVAILABLE',
+                  quoteState:feed.quoteState||'UNAVAILABLE',
+                  nextOpen:feed.discovery?.nextScheduledOpen||null,
+                  referenceVerified:feed.referencePriceVerified===true
+                });
+              }
               if (Number.isFinite(packet.spotPrice)) tradingEngine.currentSpotPrice = packet.spotPrice;
               if (packet.market) tradingEngine.currentMarket = packet.market;
               if (packet.book) tradingEngine.currentBook = packet.book;
@@ -116,7 +126,10 @@ export default function App() {
   return (
     <div className={`min-h-screen transition-colors duration-200 ${theme === 'light' ? 'theme-light bg-slate-50 text-slate-900' : 'bg-[#0a0a0c] text-neutral-100'} flex flex-col font-sans selection:bg-cyan-500 selection:text-black ${isKiosk ? 'p-2' : ''}`}>
       {!backendConnected && <div role="alert" className="bg-red-900 p-3 text-white text-center">Backend disconnected — NO trading will run locally.</div>}
-      {backendConnected && !verifiedMarket && <div role="status" className="bg-amber-900 text-amber-100 p-3 text-center font-semibold">PAPER orders PAUSED — Kalshi REST observations are read-only; settlement and paper execution are not yet validated.</div>}
+      {backendConnected && <div role="status" className="bg-amber-950 text-amber-100 p-3 text-center text-sm font-semibold">
+        PAPER orders PAUSED · Kalshi market: {exchangeState?.marketState ?? 'CHECKING'} · Order book: {exchangeState?.quoteState ?? 'CHECKING'} · CF BRTI reference: {exchangeState?.referenceVerified ? 'verified' : 'not verified'}
+        {exchangeState?.nextOpen && <span className="block text-xs mt-1 font-normal">Next listed opening: {new Date(exchangeState.nextOpen).toLocaleString()} (local time; not a guarantee of active trading)</span>}
+      </div>}
       {/* Top Bar Navigation */}
       <Navbar
         activeTab={activeTab}
