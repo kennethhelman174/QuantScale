@@ -429,18 +429,6 @@ async function startServer() {
       // Read-only exchange quotes cannot authorize automated PAPER execution.
       res.status(409).json({error:'Automated PAPER trading disabled until directional contract pricing and settlement reconciliation are validated.'});
       return;
-      const spot = tradingEngine.liveDataManager.getLatestSpot();
-      const book = tradingEngine.currentBook;
-      const now = Date.now();
-      if (tradingEngine.mode !== 'PAPER' || tradingEngine.riskManager.isPaused() ||
-          book.source !== 'KALSHI_WS' || book.isStale ||
-          book.ticker !== tradingEngine.currentMarket.ticker ||
-          now - book.timestamp > tradingEngine.riskManager.getLimits().maxDataAgeMs ||
-          !spot || now - spot.timestamp > tradingEngine.riskManager.getLimits().maxDataAgeMs) {
-        res.status(409).json({ error: 'Verified Kalshi book, fresh BTC data and cleared risk gates required.' });
-        return;
-      }
-      tradingEngine.toggleAutoTrading(true);
     } else {
       res.status(400).json({ error: 'Unknown command' });
       return;
