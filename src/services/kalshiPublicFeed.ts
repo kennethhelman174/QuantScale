@@ -38,7 +38,23 @@ export class KalshiPublicFeed {
   private inFlight=false;
   private lastTicker: string | null = null;
   constructor(private onUpdate:(market:Kalshi15MMarket,book:KalshiOrderBook)=>void, private onRollover?:(previousTicker:string)=>void){}
-  status(){return {market:this.activeMarket?.ticker||null, bookAgeMs:this.lastBook?Date.now()-this.lastBook.timestamp:null, source:this.lastBook?.source||null, error:this.lastError,discovery:this.diagnostics};}
+  status(){
+    const now=Date.now();
+    const age=this.lastBook?now-this.lastBook.timestamp:null;
+    const bookFresh=age!==null && age<=12000 && !this.lastBook?.isStale;
+    const marketActive=!!this.activeMarket && this.activeMarket.openTimestamp<=now && this.activeMarket.closeTimestamp>now;
+    return {
+      market:this.activeMarket?.ticker||null,bookAgeMs:age,source:this.lastBook?.source||null,
+      error:this.lastError,discovery:this.diagnostics,
+      marketState:marketActive?'ACTIVE':this.diagnostics.nextScheduledOpen?'SCHEDULED':'UNAVAILABLE',
+      quoteState:bookFresh?'FRESH':'UNAVAILABLE',
+      contractType:'INDEX_DIRECTION_15M',
+      referenceSource:'CF Benchmarks BRTI',
+      referencePriceVerified:false,
+      executionReady:false,
+      reason:!marketActive?'No active exchange contract':!bookFresh?'No fresh valid order book':'Official BRTI reference price and strategy model not yet validated'
+    };
+  }
   start(){if(this.timer)return;void this.poll();this.timer=setInterval(()=>void this.poll(),4000);}
   stop(){if(this.timer)clearInterval(this.timer);this.timer=null;this.activeMarket=null;this.lastBook=null;}
   async poll(){
