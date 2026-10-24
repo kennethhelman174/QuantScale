@@ -425,6 +425,10 @@ async function startServer() {
       }
       tradingEngine.setAutoTradingMode(profile);
     } else if (command === 'resume') {
+      // Audit gate: the current fixed-strike engine is not contract-compatible with KXBTC15M.
+      // Read-only exchange quotes cannot authorize automated PAPER execution.
+      res.status(409).json({error:'Automated PAPER trading disabled until directional contract pricing and settlement reconciliation are validated.'});
+      return;
       const spot = tradingEngine.liveDataManager.getLatestSpot();
       const book = tradingEngine.currentBook;
       const now = Date.now();
