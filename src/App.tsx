@@ -42,6 +42,7 @@ export default function App() {
 
   const [backendConnected, setBackendConnected] = useState(false);
   const [verifiedMarket, setVerifiedMarket] = useState(false);
+  const [backendRunning, setBackendRunning] = useState(false);
   const controlsUnavailable = () => alert('Only authenticated backend trading controls are allowed. Browser-local trading is disabled.');
   // Subscribe to real-time central backend engine state changes via WebSocket
   const [, setTick] = useState(0);
@@ -76,7 +77,10 @@ export default function App() {
               if (Array.isArray(packet.candles)) tradingEngine.candles = packet.candles;
               if (Array.isArray(packet.spotHistory)) tradingEngine.spotHistory = packet.spotHistory;
               if (Array.isArray(packet.riskPortfolios)) tradingEngine.riskManager.hydratePortfolios(packet.riskPortfolios);
+              setBackendRunning(true);
               if (packet.mode) tradingEngine.mode = packet.mode;
+              if (typeof packet.isAutoTrading === 'boolean') tradingEngine.isAutoTrading = packet.isAutoTrading;
+              if (packet.autoTradingMode) tradingEngine.autoTradingMode = packet.autoTradingMode;
               if (packet.positions) tradingEngine.positions = packet.positions;
               if (packet.orders) tradingEngine.orders = packet.orders;
               setTick((t) => t + 1);
@@ -86,8 +90,8 @@ export default function App() {
           }
         };
 
-        socket.onclose = () => setBackendConnected(false);
-        socket.onerror = () => setBackendConnected(false);
+        socket.onclose = () => { setBackendConnected(false); setBackendRunning(false); };
+        socket.onerror = () => { setBackendConnected(false); setBackendRunning(false); };
       } catch { setBackendConnected(false); }
     }
 
@@ -118,7 +122,7 @@ export default function App() {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         mode={tradingEngine.mode}
-        isRunning={tradingEngine.getIsRunning()}
+        isRunning={backendRunning}
         onToggleEngine={handleToggleEngine}
         isAutoTrading={tradingEngine.isAutoTrading}
         onToggleAutoTrading={controlsUnavailable}
