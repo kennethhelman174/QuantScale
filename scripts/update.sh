@@ -24,6 +24,15 @@ TEMP_DATA="$(mktemp -d)"
 trap 'rm -rf "$TEMP_DATA"' EXIT
 echo "Validating $SHA before switching releases"
 npm ci --no-audit --no-fund
+# npm lockfiles generated on x64 can omit the platform-specific Rolldown binding.
+# For Raspberry Pi 64-bit, explicitly install the version matching Rolldown.
+if [ "$(uname -s)" = "Linux" ] && [ "$(uname -m)" = "aarch64" ]; then
+  ROLLDOWN_VERSION="$(node -p 'require("./node_modules/rolldown/package.json").version')"
+  echo "Ensuring Rolldown Linux ARM64 GNU binding v$ROLLDOWN_VERSION"
+  npm install --no-save --package-lock=false --no-audit --no-fund \
+    "@rolldown/binding-linux-arm64-gnu@$ROLLDOWN_VERSION"
+  node -e 'require.resolve("@rolldown/binding-linux-arm64-gnu"); console.log("ARM64 Rolldown binding available")'
+fi
 npm run lint
 DATA_DIR="$TEMP_DATA" npm test
 npm run build
