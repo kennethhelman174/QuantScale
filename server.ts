@@ -12,6 +12,7 @@ import { KalshiSettlementObserver } from './src/services/kalshiSettlementObserve
 import { CoinbaseProxyFeed } from './src/services/coinbaseProxyFeed';
 import { evaluateWindowDirection } from './src/services/directionResearch';
 import { evaluateQuoteResearch } from './src/services/quoteResearch';
+import { evaluateCalibration } from './src/services/probabilityCalibration';
 import type { Kalshi15MMarket, KalshiOrderBook } from './src/types/market';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -234,6 +235,11 @@ async function startServer() {
   app.get('/api/research/direction', (_req: Request, res: Response) => {
     const feed=coinbaseProxy.snapshot();
     res.json({signal:evaluateWindowDirection(exchangeMarket,feed.samples),proxyFeed:{error:feed.error,lastSeen:feed.lastSeen},observationOnly:true,ordersEnabled:false});
+  });
+
+  app.get('/api/research/calibration', (_req: Request, res: Response) => {
+    // This endpoint deliberately does not fabricate historical predictions from settlement outcomes.
+    res.json({calibration:evaluateCalibration([]),observationOnly:true,ordersEnabled:false});
   });
 
   app.get('/api/research/quotes', (_req: Request, res: Response) => {
