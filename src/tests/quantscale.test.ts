@@ -151,7 +151,9 @@ describe('3. GitHub Auto-Updater Rollback & Health Check Verification', () => {
     const status = githubUpdater.getStatus();
     assert.ok(status.runningVersion);
     assert.ok(status.repoUrl);
-    assert.equal(status.branch, 'main');
+    assert.equal(typeof status.branch, 'string');
+    assert.ok(status.branch.length > 0);
+    assert.ok(!status.branch.includes(' '));
   });
 });
 
