@@ -13,6 +13,7 @@ import { CoinbaseProxyFeed } from './src/services/coinbaseProxyFeed';
 import { evaluateWindowDirection } from './src/services/directionResearch';
 import { evaluateQuoteResearch } from './src/services/quoteResearch';
 import { evaluateCalibration } from './src/services/probabilityCalibration';
+import { PythonPaperBridge } from './src/services/pythonPaperBridge';
 import type { Kalshi15MMarket, KalshiOrderBook } from './src/types/market';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -116,6 +117,7 @@ async function startServer() {
   let exchangeMarket: Kalshi15MMarket | null = null;
   let exchangeBook: KalshiOrderBook | null = null;
   const coinbaseProxy = new CoinbaseProxyFeed();
+  const pythonBridge = new PythonPaperBridge();
   const settlementObserver = new KalshiSettlementObserver(observation => {
     // Immutable ledger of official outcomes, not a trading instruction.
     dbEngine.recordOfficialSettlement(observation);
@@ -218,6 +220,7 @@ async function startServer() {
     tradingEngine.start();
     publicFeed.start();
     coinbaseProxy.start();
+    pythonBridge.start();
     settlementObserver.start();
     tradingEngine.subscribe(() => {
       broadcastState();
@@ -235,6 +238,11 @@ async function startServer() {
   app.get('/api/research/direction', (_req: Request, res: Response) => {
     const feed=coinbaseProxy.snapshot();
     res.json({signal:evaluateWindowDirection(exchangeMarket,feed.samples),proxyFeed:{error:feed.error,lastSeen:feed.lastSeen},observationOnly:true,ordersEnabled:false});
+  });
+
+  app.get('/api/python-paper/status', (_req: Request, res: Response) => {
+    res.setHeader('Cache-Control','no-store');
+    res.json(pythonBridge.status());
   });
 
   app.get('/api/research/calibration', (_req: Request, res: Response) => {
@@ -502,6 +510,7 @@ async function startServer() {
     tradingEngine.stop();
     publicFeed.stop();
     coinbaseProxy.stop();
+    pythonBridge.stop();
     settlementObserver.stop();
     githubUpdater.stopAutoCheck();
     persist();
