@@ -27,6 +27,9 @@ jobs:
       - name: Run TypeScript Strict Typecheck
         run: npm run lint
 
+      - name: Run automated tests
+        run: npm test
+
       - name: Build Production Bundle
         run: npm run build
 
@@ -52,9 +55,11 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install & Build
+      - name: Install, Verify & Build
         run: |
           npm ci
+          npm run lint
+          npm test
           npm run build
 
       - name: Package Raspberry Pi Release Archive
