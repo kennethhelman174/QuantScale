@@ -163,6 +163,7 @@ async function startServer() {
       riskPortfolios: tradingEngine.riskManager.getAllPortfolios(),
       candles: tradingEngine.candles,
       spotHistory: tradingEngine.spotHistory,
+      feed: publicFeed.status(),
       updaterStatus: githubUpdater.getStatus(),
     };
     ws.send(JSON.stringify(snapshotPacket));
@@ -197,6 +198,7 @@ async function startServer() {
       riskPortfolios: tradingEngine.riskManager.getAllPortfolios(),
       candles: tradingEngine.candles,
       spotHistory: tradingEngine.spotHistory,
+      feed: publicFeed.status(),
     };
     const message = JSON.stringify(packet);
     for (const client of connectedClients) {
