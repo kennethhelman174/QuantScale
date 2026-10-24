@@ -51,6 +51,8 @@ export class KalshiPublicFeed {
       contractType:'INDEX_DIRECTION_15M',
       referenceSource:'CF Benchmarks BRTI',
       referencePriceVerified:false,
+      researchSignal:'UNAVAILABLE',
+      researchSignalReason:'A Coinbase spot reading cannot establish the CF Benchmarks BRTI 60-second comparison; no verified reference-price samples',
       executionReady:false,
       reason:!marketActive?'No active exchange contract':!bookFresh?'No fresh valid order book':'Official BRTI reference price and strategy model not yet validated'
     };
