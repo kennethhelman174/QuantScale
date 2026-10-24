@@ -36,11 +36,13 @@ export class PythonPaperBridge {
    const sources=obj(ref.sources);
    const source=obj(sources.kalshi_brti_5hz);
    const counts=obj(obj(metrics).counts);
+   const market=obj(data.market);
+   const strategy=obj(data.hybrid_manager);
    const allowed={
-    timestamp:wall,ticker:typeof data.ticker==='string'?data.ticker:null,
-    engineMode:typeof data.mode==='string'?data.mode:null,
+    timestamp:wall,ticker:typeof data.ticker==='string'?data.ticker:(typeof market.ticker==='string'?market.ticker:null),
+    engineMode:typeof data.mode==='string'?data.mode:(data.running===true?'STREAMING PAPER':null),
     modelId:typeof data.model_id==='string'?data.model_id:null,
-    strategy:typeof strategic==='string'?strategic:null,
+    strategy:typeof strategic==='string'?strategic:(typeof strategy.policy==='string'?strategy.policy:null),
     executionId:data.execution_id,
     paper:{cash:typeof wallet.cash==='number'?wallet.cash:null,equity:typeof wallet.equity==='number'?wallet.equity:null,
       openPositions:Array.isArray(wallet.positions)?wallet.positions.length:null,dailyHalt:wallet.daily_halt===true},
