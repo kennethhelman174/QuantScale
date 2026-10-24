@@ -9,6 +9,8 @@ import { dbEngine } from './src/db/serverStore';
 import { githubUpdater } from './src/services/githubUpdater';
 import { KalshiPublicFeed } from './src/services/kalshiPublicFeed';
 import { KalshiSettlementObserver } from './src/services/kalshiSettlementObserver';
+import { CoinbaseProxyFeed } from './src/services/coinbaseProxyFeed';
+import { evaluateWindowDirection } from './src/services/directionResearch';
 import type { Kalshi15MMarket, KalshiOrderBook } from './src/types/market';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -111,6 +113,7 @@ async function startServer() {
   // Observation-only exchange feed. Not connected to the order execution path.
   let exchangeMarket: Kalshi15MMarket | null = null;
   let exchangeBook: KalshiOrderBook | null = null;
+  const coinbaseProxy = new CoinbaseProxyFeed();
   const settlementObserver = new KalshiSettlementObserver(observation => {
     // Immutable ledger of official outcomes, not a trading instruction.
     dbEngine.recordOfficialSettlement(observation);
@@ -212,6 +215,7 @@ async function startServer() {
   if (isPrimary) {
     tradingEngine.start();
     publicFeed.start();
+    coinbaseProxy.start();
     settlementObserver.start();
     tradingEngine.subscribe(() => {
       broadcastState();
@@ -224,6 +228,11 @@ async function startServer() {
 
   app.get('/api/kalshi/settlements', (_req: Request, res: Response) => {
     res.json({settlements:settlementObserver.list(), confirmedHistory:dbEngine.listOfficialSettlements(), observationOnly:true, payoutsApplied:false});
+  });
+
+  app.get('/api/research/direction', (_req: Request, res: Response) => {
+    const feed=coinbaseProxy.snapshot();
+    res.json({signal:evaluateWindowDirection(exchangeMarket,feed.samples),proxyFeed:{error:feed.error,lastSeen:feed.lastSeen},observationOnly:true,ordersEnabled:false});
   });
 
   app.get('/api/kalshi/observation', (_req: Request, res: Response) => {
@@ -486,6 +495,7 @@ async function startServer() {
     console.log('[Server] Shutting down QuantScale server...');
     tradingEngine.stop();
     publicFeed.stop();
+    coinbaseProxy.stop();
     settlementObserver.stop();
     githubUpdater.stopAutoCheck();
     persist();
