@@ -27,6 +27,7 @@ export class KalshiSettlementObserver {
   private pending=new Set<string>();
   private busy=false;
   private timer:ReturnType<typeof setInterval>|null=null;
+  constructor(private readonly onConfirmed?: (observation: SettlementObservation) => void) {}
   public track(ticker:string) {
     if(!/^KXBTC15M-[A-Za-z0-9-]+$/.test(ticker)) throw Error('Invalid ticker');
     if(!this.observations.has(ticker)) {
@@ -49,8 +50,12 @@ export class KalshiSettlementObserver {
             {headers:{accept:'application/json'},signal:controller.signal});
           if(!res.ok)throw Error('Exchange returned HTTP '+res.status);
           const observation=parseOfficialSettlement(ticker,await res.json());
+          if(observation.state==='CONFIRMED') {
+            // Do not mark processed until the durable storage callback commits.
+            this.onConfirmed?.(observation);
+            this.pending.delete(ticker);
+          }
           this.observations.set(ticker,observation);
-          if(observation.state==='CONFIRMED')this.pending.delete(ticker);
         }catch(e){
           this.observations.set(ticker,{ticker,state:'ERROR',result:null,exchangeStatus:null,
             observedAt:Date.now(),message:String(e)});
