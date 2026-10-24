@@ -3,12 +3,13 @@
 set -Eeuo pipefail
 BASE="$HOME/.local/share/quantscale-app"
 SOURCE="$(cat "$HOME/.config/quantscale/source_path")"
+BRANCH="$(cat "$HOME/.config/quantscale/deploy_branch")"
 CURRENT="$BASE/current"
 mkdir -p "$BASE/releases" "$BASE/logs"
 exec 9>"$BASE/update.lock"
 flock -n 9 || { echo "Update already running"; exit 0; }
-git -C "$SOURCE" fetch --quiet origin main
-SHA="$(git -C "$SOURCE" rev-parse origin/main)"
+git -C "$SOURCE" fetch --quiet origin "$BRANCH"
+SHA="$(git -C "$SOURCE" rev-parse "origin/$BRANCH")"
 RELEASE="$BASE/releases/$SHA"
 PREVIOUS="$(readlink -f "$CURRENT" 2>/dev/null || true)"
 if [ "$PREVIOUS" = "$RELEASE" ]; then
@@ -26,6 +27,14 @@ npm ci --no-audit --no-fund
 npm run lint
 DATA_DIR="$TEMP_DATA" npm test
 npm run build
+# SQLite-consistent backup before activating a new release.
+DB="$HOME/.local/share/quantscale/data/quantscale.db"
+if [ -f "$DB" ]; then
+  DEST="$HOME/.local/share/quantscale/backups"
+  mkdir -p "$DEST"
+  chmod 700 "$DEST"
+  sqlite3 "$DB" ".backup '$DEST/pre-deploy-$(date -u +%Y%m%dT%H%M%SZ).db'"
+fi
 ln -sfn "$RELEASE" "$BASE/.current-next"
 mv -Tf "$BASE/.current-next" "$CURRENT"
 if ! systemctl --user restart quantscale.service; then

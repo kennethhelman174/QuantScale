@@ -17,6 +17,9 @@ fi
 mkdir -p "$HOME/.local/share/quantscale-app/releases" "$HOME/.local/share/quantscale/data" "$HOME/.config/quantscale" "$HOME/.config/systemd/user"
 chmod 700 "$HOME/.config/quantscale" "$HOME/.local/share/quantscale/data"
 printf '%s\n' "$SRC" > "$HOME/.config/quantscale/source_path"
+DEPLOY_BRANCH="$(git -C "$SRC" symbolic-ref --quiet --short HEAD || echo main)"
+printf '%s\n' "$DEPLOY_BRANCH" > "$HOME/.config/quantscale/deploy_branch"
+echo "Tracking origin/$DEPLOY_BRANCH for safe updates."
 if [ ! -e "$HOME/.config/quantscale/environment" ]; then
   umask 077
   printf 'NODE_ENV=production\nPORT=3000\nHOST=127.0.0.1\nDATA_DIR=%s\nADMIN_API_KEY=%s\nNODE_OPTIONS=--experimental-sqlite\n' "$HOME/.local/share/quantscale/data" "$(openssl rand -hex 32)" > "$HOME/.config/quantscale/environment"
