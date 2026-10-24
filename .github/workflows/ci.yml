@@ -61,6 +61,8 @@ jobs:
           test "$CODE" = "401"
           CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "X-API-KEY: $ADMIN_API_KEY" -H 'Content-Type: application/json' -d '{"mode":"LIVE"}' http://127.0.0.1:3000/api/mode)
           test "$CODE" = "403"
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "X-API-KEY: $ADMIN_API_KEY" -H 'Content-Type: application/json' -d '{"command":"resume"}' http://127.0.0.1:3000/api/paper/control)
+          test "$CODE" = "409"
 
       - name: Verify No Uncommitted Credential Leaks
         run: |
