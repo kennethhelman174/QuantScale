@@ -84,13 +84,10 @@ async function startServer() {
   // LIVE remains disabled and changes require an authenticated server action.
   tradingEngine.mode = 'PAPER';
   tradingEngine.isAutoTrading = false;
-  const primary = tradingEngine.riskManager.getPortfolio('PRIMARY');
-  const cash = dbEngine.getWallet('PAPER').balanceCents / 100;
-  if (primary) {
-    primary.cashBalance = cash;
-    primary.equity = cash;
-    primary.usableHeadroom = cash;
-  }
+  const startupWallet = dbEngine.getWallet('PAPER');
+  tradingEngine.riskManager.synchronizePaperWallet(
+    startupWallet.balanceCents, startupWallet.reservedCents, startupWallet.realizedPnlCents, true
+  );
   const persist = () => {
     try {
       dbEngine.reconcileClosedPositions(tradingEngine.positions);
@@ -275,8 +272,8 @@ async function startServer() {
       note || `API Deposit ($${dollars.toFixed(2)})`
     );
 
-    const primary = tradingEngine.riskManager.getPortfolio('PRIMARY');
-    if (primary) primary.cashBalance = dbEngine.getWallet('PAPER').balanceCents / 100;
+    const paper = dbEngine.getWallet('PAPER');
+    tradingEngine.riskManager.synchronizePaperWallet(paper.balanceCents, paper.reservedCents, paper.realizedPnlCents);
     res.json({ success: true, wallet: dbEngine.getWallet(mode) });
   });
 
@@ -310,8 +307,8 @@ async function startServer() {
       note || `API Withdrawal ($${dollars.toFixed(2)})`
     );
 
-    const primary = tradingEngine.riskManager.getPortfolio('PRIMARY');
-    if (primary) primary.cashBalance = dbEngine.getWallet('PAPER').balanceCents / 100;
+    const paper = dbEngine.getWallet('PAPER');
+    tradingEngine.riskManager.synchronizePaperWallet(paper.balanceCents, paper.reservedCents, paper.realizedPnlCents);
     res.json({ success: true, wallet: dbEngine.getWallet(mode) });
   });
 
@@ -330,9 +327,56 @@ async function startServer() {
       return;
     }
     dbEngine.resetPaperWallet(cents);
-    const primary = tradingEngine.riskManager.getPortfolio('PRIMARY');
-    if (primary) primary.cashBalance = dollars;
+    const paper = dbEngine.getWallet('PAPER');
+    tradingEngine.riskManager.synchronizePaperWallet(paper.balanceCents, paper.reservedCents, paper.realizedPnlCents, true);
     res.json({ success: true, wallet: dbEngine.getWallet('PAPER') });
+  });
+
+  // Read-only operator state, sourced exclusively from the Raspberry Pi backend.
+  app.get('/api/paper/control', (_req: Request, res: Response) => {
+    res.json({
+      mode: tradingEngine.mode,
+      isAutoTrading: tradingEngine.isAutoTrading,
+      profile: tradingEngine.autoTradingMode,
+      isPaused: tradingEngine.riskManager.isPaused(),
+      marketReady: tradingEngine.currentBook.source === 'KALSHI_WS' &&
+        !tradingEngine.currentBook.isStale &&
+        Date.now() - tradingEngine.currentBook.timestamp <= tradingEngine.riskManager.getLimits().maxDataAgeMs,
+    });
+  });
+
+  // Administrative control must never be reachable without the secret header.
+  app.post('/api/paper/control', authenticateAdmin, (req: Request, res: Response) => {
+    const command = req.body?.command;
+    if (command === 'pause') {
+      tradingEngine.toggleAutoTrading(false);
+    } else if (command === 'profile') {
+      const profile = req.body?.profile;
+      if (!['ACTIVE', 'BALANCED', 'CONSERVATIVE'].includes(profile)) {
+        res.status(400).json({ error: 'Invalid profile' });
+        return;
+      }
+      tradingEngine.setAutoTradingMode(profile);
+    } else if (command === 'resume') {
+      const spot = tradingEngine.liveDataManager.getLatestSpot();
+      const book = tradingEngine.currentBook;
+      const now = Date.now();
+      if (tradingEngine.mode !== 'PAPER' || tradingEngine.riskManager.isPaused() ||
+          book.source !== 'KALSHI_WS' || book.isStale ||
+          book.ticker !== tradingEngine.currentMarket.ticker ||
+          now - book.timestamp > tradingEngine.riskManager.getLimits().maxDataAgeMs ||
+          !spot || now - spot.timestamp > tradingEngine.riskManager.getLimits().maxDataAgeMs) {
+        res.status(409).json({ error: 'Verified Kalshi book, fresh BTC data and cleared risk gates required.' });
+        return;
+      }
+      tradingEngine.toggleAutoTrading(true);
+    } else {
+      res.status(400).json({ error: 'Unknown command' });
+      return;
+    }
+    persist();
+    broadcastState();
+    res.json({ success: true, isAutoTrading: tradingEngine.isAutoTrading, profile: tradingEngine.autoTradingMode });
   });
 
   // LIVE is deliberately unavailable until authenticated order routing is independently verified.
