@@ -8,6 +8,7 @@ import { tradingEngine } from './src/services/tradingEngine';
 import { dbEngine } from './src/db/serverStore';
 import { githubUpdater } from './src/services/githubUpdater';
 import { KalshiPublicFeed } from './src/services/kalshiPublicFeed';
+import { KalshiSettlementObserver } from './src/services/kalshiSettlementObserver';
 import type { Kalshi15MMarket, KalshiOrderBook } from './src/types/market';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -110,11 +111,12 @@ async function startServer() {
   // Observation-only exchange feed. Not connected to the order execution path.
   let exchangeMarket: Kalshi15MMarket | null = null;
   let exchangeBook: KalshiOrderBook | null = null;
+  const settlementObserver = new KalshiSettlementObserver();
   const publicFeed = new KalshiPublicFeed((market, book) => {
     exchangeMarket = market;
     exchangeBook = book;
     broadcastExchange();
-  });
+  }, ticker => settlementObserver.track(ticker));
 
   const app = express();
   app.use(express.json({ limit: '16kb' }));
@@ -200,6 +202,7 @@ async function startServer() {
   if (isPrimary) {
     tradingEngine.start();
     publicFeed.start();
+    settlementObserver.start();
     tradingEngine.subscribe(() => {
       broadcastState();
     });
@@ -208,6 +211,10 @@ async function startServer() {
     // The in-process service only checks status. Deployment is handled by systemd.
     githubUpdater.startAutoCheck();
   }
+
+  app.get('/api/kalshi/settlements', (_req: Request, res: Response) => {
+    res.json({settlements:settlementObserver.list(), observationOnly:true, payoutsApplied:false});
+  });
 
   app.get('/api/kalshi/observation', (_req: Request, res: Response) => {
     res.json({ market: exchangeMarket, book: displayBook(), feed: publicFeed.status(),
@@ -469,6 +476,7 @@ async function startServer() {
     console.log('[Server] Shutting down QuantScale server...');
     tradingEngine.stop();
     publicFeed.stop();
+    settlementObserver.stop();
     githubUpdater.stopAutoCheck();
     persist();
     dbEngine.close();
