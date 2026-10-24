@@ -34,6 +34,7 @@ import { StrategyEvaluator, DecisionVolMetric } from '../quant/strategies/evalua
 import { KalshiDataCollector } from './kalshiClient';
 import { alertManager } from './alertManager';
 import { LiveDataManager, LiveMarketPacket } from './liveDataManager';
+import { coinbaseSpotClient } from './coinbaseClient';
 
 export class TradingEngine {
   public mode: ExecutionMode = 'PAPER';
@@ -60,7 +61,7 @@ export class TradingEngine {
   public diagnosticLogs: DiagnosticLogEntry[] = [];
 
   // Autonomous Trading Bot state
-  public isAutoTrading: boolean = true;
+  public isAutoTrading: boolean = false;
   public autoTradingMode: 'ACTIVE' | 'BALANCED' | 'CONSERVATIVE' = 'ACTIVE';
   public executionFrequencyMode: 'SIGNAL_THRESHOLDS' = 'SIGNAL_THRESHOLDS'; // Run strictly on mathematical signal thresholds without artificial time throttling
   public autoTradeCount: number = 0;
@@ -84,6 +85,9 @@ export class TradingEngine {
   }
 
   // Engine loop
+  private unsubscribeSpot: (() => void) | null = null;
+  private usingVerifiedSpot = false;
+  private lastFeedWarning = 0;
   private intervalId: NodeJS.Timeout | null = null;
   private isRunning = false;
   private listeners: (() => void)[] = [];
@@ -154,8 +158,12 @@ export class TradingEngine {
     this.isRunning = true;
     this.logDiagnostic('INFO', 'ORDER_ROUTING', 'Market data feed and execution engine started.');
 
-    // Connect Live Data Manager (WebSocket / REST live integration)
-    this.liveDataManager.connect(this.currentMarket.ticker);
+    // The service runs Coinbase spot independently of all browser connections.
+    if (this.mode !== 'DEMO') {
+      this.unsubscribeSpot = coinbaseSpotClient.subscribe(obs => this.liveDataManager.setLatestSpot(obs));
+      coinbaseSpotClient.start();
+      this.liveDataManager.connect(this.currentMarket.ticker);
+    }
 
     this.intervalId = setInterval(() => {
       this.tick();
@@ -168,6 +176,9 @@ export class TradingEngine {
       this.intervalId = null;
     }
     this.liveDataManager.disconnect();
+    coinbaseSpotClient.stop();
+    if (this.unsubscribeSpot) this.unsubscribeSpot();
+    this.unsubscribeSpot = null;
     this.isRunning = false;
     this.logDiagnostic('INFO', 'ORDER_ROUTING', 'Execution engine paused.');
     this.notify();
@@ -200,22 +211,21 @@ export class TradingEngine {
   public tick() {
     const now = Date.now();
 
-    // 1. Advance spot BTC: DEMO uses synthetic Math.random(), PAPER/LIVE uses authentic real market feed
-    let isFeedStale = false;
+    // Real market modes must NEVER fall back to synthetic prices.
+    const liveSpot = this.liveDataManager.getLatestSpot();
+    const freshSpot = !!liveSpot && Number.isFinite(liveSpot.price) &&
+      liveSpot.price > 0 && now - liveSpot.timestamp >= 0 &&
+      now - liveSpot.timestamp <= this.riskManager.getLimits().maxDataAgeMs;
     if (this.mode === 'DEMO') {
       const spotDelta = (Math.random() - 0.495) * 22;
       this.currentSpotPrice = Math.round((this.currentSpotPrice + spotDelta) * 100) / 100;
-    } else {
-      const liveSpot = this.liveDataManager.getLatestSpot();
-      if (liveSpot && !liveSpot.isStale && liveSpot.price > 0) {
-        this.currentSpotPrice = liveSpot.price;
-      } else {
-        isFeedStale = true;
-        // In PAPER/LIVE mode, if feed is disconnected or stale, log warning
-        if (Math.random() < 0.1) {
-          this.logDiagnostic('WARN', 'MARKET_DATA', 'Spot data feed is stale or disconnected. Halting automated execution.');
-        }
+    } else if (freshSpot && liveSpot) {
+      if (!this.usingVerifiedSpot) {
+        this.spotHistory = [];
+        this.candles = [];
+        this.usingVerifiedSpot = true;
       }
+      this.currentSpotPrice = liveSpot.price;
     }
 
     this.spotHistory.push(this.currentSpotPrice);
@@ -242,7 +252,8 @@ export class TradingEngine {
 
     // 2. Refresh or roll 15-minute Kalshi market
     if (now >= this.currentMarket.closeTimestamp || this.currentMarket.settlementTimerSec <= 1) {
-      this.settleMarket();
+      if (this.mode === 'DEMO') this.settleMarket();
+      else this.currentMarket = this.dataCollector.generateOrFetchMarket(this.currentSpotPrice);
     } else {
       this.currentMarket.settlementTimerSec = Math.max(
         1,
@@ -275,8 +286,8 @@ export class TradingEngine {
     const spotObs: BTCSpotObservation = {
       timestamp: now,
       price: this.currentSpotPrice,
-      source: 'COMPOSITE',
-      volume24h: 34500,
+      source: this.mode === 'DEMO' ? 'COMPOSITE' : (liveSpot?.source || 'COINBASE'),
+      volume24h: this.mode === 'DEMO' ? 34500 : (liveSpot?.volume24h || 0),
       return10s: return30s * 0.4,
       return30s,
       return1m: return30s * 1.5,
@@ -293,10 +304,16 @@ export class TradingEngine {
     });
 
     // 5. Update Kalshi order book
-    this.currentBook = this.dataCollector.generateSynthesizedOrderBook(
-      this.currentMarket,
-      pricer.fairPriceYesCents
-    );
+    const receivedBook = this.liveDataManager.getLatestBook();
+    if (this.mode === 'DEMO') {
+      this.currentBook = this.dataCollector.generateSynthesizedOrderBook(this.currentMarket, pricer.fairPriceYesCents);
+    } else if (receivedBook && receivedBook.ticker === this.currentMarket.ticker &&
+               receivedBook.source === 'KALSHI_WS' && !receivedBook.isStale &&
+               now - receivedBook.timestamp <= this.riskManager.getLimits().maxDataAgeMs) {
+      this.currentBook = receivedBook;
+    } else {
+      this.currentBook = { ...this.currentBook, isStale: true };
+    }
 
     // 6. Record observation in persistent collector (flat and invested periods)
     const hasOpenPosition = this.positions.some((p) => p.status === 'OPEN');
@@ -308,10 +325,21 @@ export class TradingEngine {
     );
 
     // 7. Manage Existing Open Positions (trailing stops, take profits, thesis invalidation)
-    this.manageOpenPositions(pricer.fairPriceYesCents, now);
+    const verifiedMarket = this.mode === 'DEMO' ||
+      (freshSpot && this.currentBook.source === 'KALSHI_WS' &&
+       !this.currentBook.isStale && this.currentBook.ticker === this.currentMarket.ticker);
+    if (verifiedMarket) this.manageOpenPositions(pricer.fairPriceYesCents, now);
 
     // 8. Run Strategy Evaluator (Scalp & Directional Skew) using selected decision volatility
-    this.runStrategyEvaluation(spotObs, parkinsonVol, garmanKlassVol);
+    if (verifiedMarket) {
+      this.runStrategyEvaluation(spotObs, parkinsonVol, garmanKlassVol);
+    } else {
+      this.lastAutoTradeSummary = 'PAUSED: verified Kalshi order book and/or Coinbase spot feed unavailable';
+      if (now - this.lastFeedWarning > 30000) {
+        this.logDiagnostic('WARN', 'MARKET_DATA', this.lastAutoTradeSummary);
+        this.lastFeedWarning = now;
+      }
+    }
 
     // 9. Reconcile Risk & Capital
     for (const port of this.riskManager.getAllPortfolios()) {
@@ -472,6 +500,13 @@ export class TradingEngine {
    * Submit order through portfolio risk check and execution simulator
    */
   private submitStrategyOrder(portfolioId: string, decision: StrategyDecision) {
+    if (this.mode !== 'DEMO' &&
+        (this.currentBook.source !== 'KALSHI_WS' || this.currentBook.isStale ||
+         this.currentBook.ticker !== decision.marketTicker ||
+         Date.now() - (this.liveDataManager.getLatestSpot()?.timestamp || 0) > this.riskManager.getLimits().maxDataAgeMs)) {
+      this.logDiagnostic('WARN', 'RISK_GATE', 'Rejected order: unverified or stale real market data.');
+      return;
+    }
     const side = decision.action === 'ENTER_YES' ? 'YES' : 'NO';
     const price = decision.suggestedPrice;
     const requestedQty = decision.suggestedQuantity;
