@@ -120,7 +120,7 @@ export default function App() {
           setSafeguardsTab(tab);
           setIsSafeguardsOpen(true);
         }}
-        onOpenSetupWizard={() => setIsSetupWizardOpen(true)}
+        onOpenSetupWizard={controlsUnavailable}
         isKiosk={isKiosk}
         onToggleKiosk={() => setIsKiosk(!isKiosk)}
         theme={theme}
@@ -220,17 +220,6 @@ export default function App() {
         onUpdateRiskLimits={controlsUnavailable}
       />
 
-      {/* Kalshi API Setup Wizard Modal */}
-      <KalshiSetupWizard
-        isOpen={isSetupWizardOpen}
-        onClose={() => setIsSetupWizardOpen(false)}
-        currentCredentials={tradingEngine.dataCollector.getCredentials()}
-        onSaveCredentials={async (_creds: KalshiApiCredentials) => ({
-          isSuccess: false, status: 'OFFLINE' as const, latencyMs: 0,
-          exchangeTime: new Date().toISOString(), tradingActive: false,
-          message: 'Browser credentials disabled. Configure market feeds on the backend.'
-        })}
-      />
     </div>
   );
 }

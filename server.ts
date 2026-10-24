@@ -274,6 +274,8 @@ async function startServer() {
       note || `API Deposit ($${dollars.toFixed(2)})`
     );
 
+    const primary = tradingEngine.riskManager.getPortfolio('PRIMARY');
+    if (primary) primary.cashBalance = dbEngine.getWallet('PAPER').balanceCents / 100;
     res.json({ success: true, wallet: dbEngine.getWallet(mode) });
   });
 
@@ -307,6 +309,8 @@ async function startServer() {
       note || `API Withdrawal ($${dollars.toFixed(2)})`
     );
 
+    const primary = tradingEngine.riskManager.getPortfolio('PRIMARY');
+    if (primary) primary.cashBalance = dbEngine.getWallet('PAPER').balanceCents / 100;
     res.json({ success: true, wallet: dbEngine.getWallet(mode) });
   });
 
