@@ -66,7 +66,7 @@ export default function App() {
         socket.onmessage = (event) => {
           try {
             const packet = JSON.parse(event.data);
-            if (packet.type === 'TICK_UPDATE' || packet.type === 'STATE_SNAPSHOT') {
+            if (packet.type === 'TICK_UPDATE' || packet.type === 'STATE_SNAPSHOT' || packet.type === 'KALSHI_OBSERVATION') {
               if (Number.isFinite(packet.spotPrice)) tradingEngine.currentSpotPrice = packet.spotPrice;
               if (packet.market) tradingEngine.currentMarket = packet.market;
               if (packet.book) tradingEngine.currentBook = packet.book;
@@ -116,7 +116,7 @@ export default function App() {
   return (
     <div className={`min-h-screen transition-colors duration-200 ${theme === 'light' ? 'theme-light bg-slate-50 text-slate-900' : 'bg-[#0a0a0c] text-neutral-100'} flex flex-col font-sans selection:bg-cyan-500 selection:text-black ${isKiosk ? 'p-2' : ''}`}>
       {!backendConnected && <div role="alert" className="bg-red-900 p-3 text-white text-center">Backend disconnected — NO trading will run locally.</div>}
-      {backendConnected && !verifiedMarket && <div role="status" className="bg-amber-900 text-amber-100 p-3 text-center font-semibold">PAPER trading PAUSED — no verified, fresh Kalshi order book. Quotes/markets may be placeholders.</div>}
+      {backendConnected && !verifiedMarket && <div role="status" className="bg-amber-900 text-amber-100 p-3 text-center font-semibold">PAPER orders PAUSED — Kalshi REST observations are read-only; settlement and paper execution are not yet validated.</div>}
       {/* Top Bar Navigation */}
       <Navbar
         activeTab={activeTab}

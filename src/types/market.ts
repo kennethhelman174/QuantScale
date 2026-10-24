@@ -50,7 +50,7 @@ export interface KalshiOrderBook {
   isCrossed: boolean;
   isEmpty: boolean;
   isStale: boolean;
-  source: 'KALSHI_WS' | 'SIMULATOR';
+  source: 'KALSHI_WS' | 'KALSHI_REST' | 'SIMULATOR';
 }
 
 export interface BTCSpotObservation {

@@ -7,6 +7,8 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { tradingEngine } from './src/services/tradingEngine';
 import { dbEngine } from './src/db/serverStore';
 import { githubUpdater } from './src/services/githubUpdater';
+import { KalshiPublicFeed } from './src/services/kalshiPublicFeed';
+import type { Kalshi15MMarket, KalshiOrderBook } from './src/types/market';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -105,11 +107,30 @@ async function startServer() {
     }
   };
 
+  // Observation-only exchange feed. Not connected to the order execution path.
+  let exchangeMarket: Kalshi15MMarket | null = null;
+  let exchangeBook: KalshiOrderBook | null = null;
+  const publicFeed = new KalshiPublicFeed((market, book) => {
+    exchangeMarket = market;
+    exchangeBook = book;
+    broadcastExchange();
+  });
+
   const app = express();
   app.use(express.json({ limit: '16kb' }));
 
   const server = http.createServer(app);
   const wss = new WebSocketServer({ server, path: '/ws' });
+
+  // Exchange REST updates never authorize trading or settlement.
+  const displayMarket = () => exchangeMarket ?? tradingEngine.currentMarket;
+  const displayBook = () => exchangeBook && Date.now() - exchangeBook.timestamp < 12000
+    ? exchangeBook : { ...tradingEngine.currentBook, isStale: true };
+  const broadcastExchange = () => {
+    const packet = JSON.stringify({ type: 'KALSHI_OBSERVATION', market: displayMarket(),
+      book: displayBook(), feed: publicFeed.status() });
+    for (const client of connectedClients) if (client.readyState === WebSocket.OPEN) client.send(packet);
+  };
 
   // Connected WebSocket clients
   const connectedClients = new Set<WebSocket>();
@@ -122,8 +143,8 @@ async function startServer() {
       timestamp: Date.now(),
       mode: tradingEngine.mode,
       spotPrice: tradingEngine.currentSpotPrice,
-      market: tradingEngine.currentMarket,
-      book: tradingEngine.currentBook,
+      market: displayMarket(),
+      book: displayBook(),
       positions: tradingEngine.positions,
       orders: tradingEngine.orders,
       isAutoTrading: tradingEngine.isAutoTrading,
@@ -154,8 +175,8 @@ async function startServer() {
       timestamp: Date.now(),
       mode: tradingEngine.mode,
       spotPrice: tradingEngine.currentSpotPrice,
-      market: tradingEngine.currentMarket,
-      book: tradingEngine.currentBook,
+      market: displayMarket(),
+      book: displayBook(),
       positions: tradingEngine.positions,
       orders: tradingEngine.orders,
       positionsCount: tradingEngine.positions.length,
@@ -178,6 +199,7 @@ async function startServer() {
   // Start persistent backend trading engine if primary lock acquired
   if (isPrimary) {
     tradingEngine.start();
+    publicFeed.start();
     tradingEngine.subscribe(() => {
       broadcastState();
     });
@@ -186,6 +208,11 @@ async function startServer() {
     // The in-process service only checks status. Deployment is handled by systemd.
     githubUpdater.startAutoCheck();
   }
+
+  app.get('/api/kalshi/observation', (_req: Request, res: Response) => {
+    res.json({ market: exchangeMarket, book: displayBook(), feed: publicFeed.status(),
+      paperExecutionEnabled: false });
+  });
 
   // --- REST API ROUTES ---
 
@@ -219,8 +246,8 @@ async function startServer() {
   // Current market & book snapshot
   app.get('/api/market', (_req: Request, res: Response) => {
     res.json({
-      market: tradingEngine.currentMarket,
-      book: tradingEngine.currentBook,
+      market: displayMarket(),
+      book: displayBook(),
       spotPrice: tradingEngine.currentSpotPrice,
       candles: tradingEngine.candles.slice(-30),
     });
@@ -441,6 +468,7 @@ async function startServer() {
   const shutdown = () => {
     console.log('[Server] Shutting down QuantScale server...');
     tradingEngine.stop();
+    publicFeed.stop();
     githubUpdater.stopAutoCheck();
     persist();
     dbEngine.close();
