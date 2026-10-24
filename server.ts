@@ -11,6 +11,7 @@ import { KalshiPublicFeed } from './src/services/kalshiPublicFeed';
 import { KalshiSettlementObserver } from './src/services/kalshiSettlementObserver';
 import { CoinbaseProxyFeed } from './src/services/coinbaseProxyFeed';
 import { evaluateWindowDirection } from './src/services/directionResearch';
+import { evaluateQuoteResearch } from './src/services/quoteResearch';
 import type { Kalshi15MMarket, KalshiOrderBook } from './src/types/market';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -233,6 +234,13 @@ async function startServer() {
   app.get('/api/research/direction', (_req: Request, res: Response) => {
     const feed=coinbaseProxy.snapshot();
     res.json({signal:evaluateWindowDirection(exchangeMarket,feed.samples),proxyFeed:{error:feed.error,lastSeen:feed.lastSeen},observationOnly:true,ordersEnabled:false});
+  });
+
+  app.get('/api/research/quotes', (_req: Request, res: Response) => {
+    const proxy=coinbaseProxy.snapshot();
+    const direction=evaluateWindowDirection(exchangeMarket,proxy.samples);
+    res.json({research:evaluateQuoteResearch(direction,exchangeBook),observationOnly:true,
+      paperOrdersPlaced:0,feesEstimatedOnly:true,walletUnchanged:true});
   });
 
   app.get('/api/kalshi/observation', (_req: Request, res: Response) => {
