@@ -20,6 +20,18 @@ describe('Server WAL ledger and process recovery', () => {
     assert.equal(dbEngine.getWallet('PAPER').balanceCents, 124675);
     dbEngine.saveEngineSnapshot({ orders: [{id: 'o-1'}], positions: closed, currentSpotPrice: 85000 });
     assert.equal(dbEngine.getEngineSnapshot()?.currentSpotPrice, 85000);
+    const official = {
+      ticker: 'KXBTC15M-26OCT24-T1715', state: 'CONFIRMED',
+      result: 'yes' as const, exchangeStatus: 'settled',
+      observedAt: Date.now(),
+    };
+    assert.equal(dbEngine.recordOfficialSettlement(official), true);
+    assert.equal(dbEngine.recordOfficialSettlement(official), false);
+    assert.equal(dbEngine.listOfficialSettlements().filter(x => x.ticker === official.ticker).length, 1);
+    assert.throws(() => dbEngine.recordOfficialSettlement({...official, result: 'no'}));
+    assert.throws(() => dbEngine.recordOfficialSettlement({...official, state: 'PENDING'}));
+    // Reading official data must not credit the paper wallet.
+    assert.equal(dbEngine.getWallet('PAPER').balanceCents, 124675);
     dbEngine.close();
 
     const db = new DatabaseSync(path.join(dir, 'quantscale.db'));
@@ -27,6 +39,9 @@ describe('Server WAL ledger and process recovery', () => {
     const ledger = db.prepare('SELECT count(*) AS n FROM ledger WHERE reference_id=?').get('position:p-1') as {n:number};
     assert.equal(Number(wallet.balance_cents), 124675);
     assert.equal(Number(ledger.n), 1);
+    const officialRecord = db.prepare('SELECT outcome FROM official_settlements WHERE ticker=?')
+      .get('KXBTC15M-26OCT24-T1715') as {outcome: string};
+    assert.equal(officialRecord.outcome, 'yes');
     db.close();
     fs.rmSync(dir, { recursive: true, force: true });
   });
