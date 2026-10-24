@@ -5,7 +5,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { tradingEngine } from './src/services/tradingEngine';
-import { dbEngine } from './src/db/database';
+import { dbEngine } from './src/db/serverStore';
 import { githubUpdater } from './src/services/githubUpdater';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -13,7 +13,8 @@ const __dirname = path.dirname(__filename);
 
 const PORT = Number(process.env.PORT) || 3000;
 const LOCK_FILE = path.join(__dirname, '.engine.lock');
-const ADMIN_API_KEY = process.env.ADMIN_API_KEY || 'quantscale-pi4-admin-secret';
+const ADMIN_API_KEY = process.env.ADMIN_API_KEY;
+if (!ADMIN_API_KEY || ADMIN_API_KEY.length < 32) throw new Error('Set a strong ADMIN_API_KEY in the server environment before starting QuantScale.');
 
 // Manage single-writer process lock
 function acquireEngineLock(): boolean {
@@ -54,23 +55,61 @@ function releaseEngineLock() {
   }
 }
 
-// Authentication middleware for administrative mutations
+// Administrative credentials are accepted ONLY from the header, never URLs or JSON bodies.
 function authenticateAdmin(req: Request, res: Response, next: NextFunction) {
-  const apiKey = req.headers['x-api-key'] || req.query.apiKey || req.body?.apiKey;
-  if (process.env.NODE_ENV === 'production') {
-    if (!apiKey || apiKey !== ADMIN_API_KEY) {
-      res.status(401).json({ error: 'Unauthorized: Invalid or missing X-API-KEY header.' });
-      return;
-    }
+  const key = req.header('x-api-key');
+  if (!key || key !== ADMIN_API_KEY) {
+    res.status(401).json({ error: 'Administrator authorization required.' });
+    return;
   }
   next();
 }
 
 async function startServer() {
   const isPrimary = acquireEngineLock();
+  if (!isPrimary) throw new Error('Another QuantScale engine appears active. Refusing to start a second server.');
+
+  // Restore durable state before starting the only trading engine.
+  const saved = dbEngine.getEngineSnapshot();
+  if (saved) {
+    tradingEngine.orders = saved.orders || [];
+    tradingEngine.positions = saved.positions || [];
+    tradingEngine.spotHistory = saved.spotHistory || [];
+    tradingEngine.candles = saved.candles || [];
+    if (saved.currentMarket) tradingEngine.currentMarket = saved.currentMarket;
+    if (saved.currentBook) tradingEngine.currentBook = saved.currentBook;
+    if (Number.isFinite(saved.currentSpotPrice)) tradingEngine.currentSpotPrice = saved.currentSpotPrice;
+    if (saved.autoTradingMode) tradingEngine.autoTradingMode = saved.autoTradingMode;
+  }
+  // LIVE remains disabled and changes require an authenticated server action.
+  tradingEngine.mode = 'PAPER';
+  tradingEngine.isAutoTrading = false;
+  const primary = tradingEngine.riskManager.getPortfolio('PRIMARY');
+  const cash = dbEngine.getWallet('PAPER').balanceCents / 100;
+  if (primary) {
+    primary.cashBalance = cash;
+    primary.equity = cash;
+    primary.usableHeadroom = cash;
+  }
+  const persist = () => {
+    try {
+      dbEngine.reconcileClosedPositions(tradingEngine.positions);
+      dbEngine.saveEngineSnapshot({
+        orders: tradingEngine.orders, positions: tradingEngine.positions,
+        spotHistory: tradingEngine.spotHistory, candles: tradingEngine.candles,
+        currentMarket: tradingEngine.currentMarket, currentBook: tradingEngine.currentBook,
+        currentSpotPrice: tradingEngine.currentSpotPrice,
+        autoTradingMode: tradingEngine.autoTradingMode,
+      });
+    } catch (error) {
+      tradingEngine.isAutoTrading = false;
+      tradingEngine.riskManager.setEmergencyPause(true);
+      console.error('[PERSISTENCE] Trading halted because saving failed:', error);
+    }
+  };
 
   const app = express();
-  app.use(express.json());
+  app.use(express.json({ limit: '16kb' }));
 
   const server = http.createServer(app);
   const wss = new WebSocketServer({ server, path: '/ws' });
@@ -139,10 +178,22 @@ async function startServer() {
     tradingEngine.subscribe(() => {
       broadcastState();
     });
-    githubUpdater.startAutoCheck();
+    tradingEngine.subscribe(persist);
+    persist();
+    // Update checks/deployments run in a separate systemd timer, not inside the trading process.
   }
 
   // --- REST API ROUTES ---
+
+  // Local deployment health is distinct from market readiness.
+  app.get('/api/health', (_req: Request, res: Response) => {
+    res.json({
+      status: 'ok', database: 'ready', isPrimaryWriter: isPrimary,
+      mode: tradingEngine.mode, activeEngine: tradingEngine.getIsRunning(),
+      marketReady: tradingEngine.mode === 'DEMO' ||
+        (tradingEngine.currentBook.source === 'KALSHI_WS' && !tradingEngine.currentBook.isStale),
+    });
+  });
 
   // Health / Engine status
   app.get('/api/status', (_req: Request, res: Response) => {
@@ -196,8 +247,8 @@ async function startServer() {
   // Wallet deposit (Authenticated)
   app.post('/api/wallet/deposit', authenticateAdmin, (req: Request, res: Response) => {
     const { amountDollars, note } = req.body;
-    const dollars = parseFloat(amountDollars);
-    if (isNaN(dollars) || dollars <= 0) {
+    const dollars = Number(amountDollars);
+    if (!Number.isFinite(dollars) || dollars <= 0 || dollars > 1000000 || !Number.isSafeInteger(Math.round(dollars * 100))) {
       res.status(400).json({ error: 'Invalid deposit amount' });
       return;
     }
@@ -223,8 +274,8 @@ async function startServer() {
   // Wallet withdrawal (Authenticated)
   app.post('/api/wallet/withdraw', authenticateAdmin, (req: Request, res: Response) => {
     const { amountDollars, note } = req.body;
-    const dollars = parseFloat(amountDollars);
-    if (isNaN(dollars) || dollars <= 0) {
+    const dollars = Number(amountDollars);
+    if (!Number.isFinite(dollars) || dollars <= 0 || dollars > 1000000 || !Number.isSafeInteger(Math.round(dollars * 100))) {
       res.status(400).json({ error: 'Invalid withdrawal amount' });
       return;
     }
@@ -256,38 +307,40 @@ async function startServer() {
   // Paper wallet reset (Authenticated)
   app.post('/api/wallet/reset', authenticateAdmin, (req: Request, res: Response) => {
     const { startingBankrollDollars } = req.body;
-    const dollars = parseFloat(startingBankrollDollars) || 1000;
+    const dollars = Number(startingBankrollDollars);
     const cents = Math.round(dollars * 100);
 
+    if (!Number.isFinite(dollars) || dollars <= 0 || dollars > 1000000) {
+      res.status(400).json({ error: 'Invalid paper bankroll' });
+      return;
+    }
+    if (tradingEngine.positions.some(p => p.status === 'OPEN')) {
+      res.status(409).json({ error: 'Cannot reset wallet with open positions.' });
+      return;
+    }
     dbEngine.resetPaperWallet(cents);
+    const primary = tradingEngine.riskManager.getPortfolio('PRIMARY');
+    if (primary) primary.cashBalance = dollars;
     res.json({ success: true, wallet: dbEngine.getWallet('PAPER') });
   });
 
-  // Switch execution mode (Strictly Authenticated)
-  app.post('/api/mode', (req: Request, res: Response) => {
-    const { mode, apiKey, operatorConfirmationText } = req.body;
-
+  // LIVE is deliberately unavailable until authenticated order routing is independently verified.
+  app.post('/api/mode', authenticateAdmin, (req: Request, res: Response) => {
+    const mode = req.body?.mode;
     if (mode === 'LIVE') {
-      if (process.env.NODE_ENV === 'production' && apiKey !== ADMIN_API_KEY) {
-        res.status(401).json({ error: 'Unauthorized: Invalid admin secret key for LIVE activation.' });
-        return;
-      }
-      if (operatorConfirmationText !== 'I AGREE TO RISK REAL CAPITAL ON KALSHI') {
-        res.status(403).json({
-          error: 'Explicit operator risk confirmation text required: "I AGREE TO RISK REAL CAPITAL ON KALSHI"',
-        });
-        return;
-      }
-    }
-
-    if (!['SIMULATION', 'PAPER', 'LIVE'].includes(mode)) {
-      res.status(400).json({ error: 'Invalid execution mode' });
+      res.status(403).json({ error: 'LIVE execution is disabled in this build.' });
       return;
     }
-
+    if (mode !== 'DEMO' && mode !== 'PAPER') {
+      res.status(400).json({ error: 'Only DEMO or PAPER is supported.' });
+      return;
+    }
+    tradingEngine.stop();
     tradingEngine.mode = mode;
-    tradingEngine.logDiagnostic('WARN', 'ORDER_ROUTING', `API switched execution mode to [${mode}]`);
-    res.json({ success: true, mode: tradingEngine.mode });
+    tradingEngine.isAutoTrading = false;
+    tradingEngine.start();
+    persist();
+    res.json({ success: true, mode, isAutoTrading: false });
   });
 
   // Diagnostics export
@@ -305,9 +358,8 @@ async function startServer() {
     res.json(result);
   });
 
-  app.post('/api/update/deploy', authenticateAdmin, async (_req: Request, res: Response) => {
-    const result = await githubUpdater.performSafeDeployment();
-    res.json(result);
+  app.post('/api/update/deploy', authenticateAdmin, (_req: Request, res: Response) => {
+    res.status(409).json({ error: 'Deployments run through the external systemd update timer.' });
   });
 
   // --- VITE MIDDLEWARE OR STATIC PRODUCTION SERVING ---
@@ -330,6 +382,8 @@ async function startServer() {
   const shutdown = () => {
     console.log('[Server] Shutting down QuantScale server...');
     tradingEngine.stop();
+    persist();
+    dbEngine.close();
     releaseEngineLock();
     server.close(() => {
       process.exit(0);
@@ -339,7 +393,7 @@ async function startServer() {
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 
-  server.listen(PORT, '0.0.0.0', () => {
+  server.listen(PORT, process.env.HOST || '127.0.0.1', () => {
     console.log(`=======================================================`);
     console.log(`  QuantScale / K-Alpha Persistent Server Running`);
     console.log(`  Port: http://localhost:${PORT}`);
