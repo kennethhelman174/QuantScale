@@ -199,3 +199,28 @@ describe('4. Multi-Client Browser Synchronization & Broadcast Server', () => {
     server.close();
   });
 });
+
+describe('5. Wallet-derived risk accounting', () => {
+  it('starts PRIMARY with $1,000 and 0% drawdown', async () => {
+    const { PortfolioRiskManager } = await import('../quant/portfolioRisk');
+    const manager = new PortfolioRiskManager();
+    const primary = manager.getPortfolio('PRIMARY');
+    assert.ok(primary);
+    assert.equal(primary.cashBalance, 1000);
+    assert.equal(primary.dailyPeakEquity, 1000);
+    assert.equal(primary.currentDrawdownPct, 0);
+  });
+
+  it('reconciles a persisted wallet without fictitious 60% drawdown', async () => {
+    const { PortfolioRiskManager } = await import('../quant/portfolioRisk');
+    const manager = new PortfolioRiskManager();
+    manager.synchronizePaperWallet(100000, 0, 0, true);
+    manager.updatePortfolioState('PRIMARY', [], []);
+    const primary = manager.getPortfolio('PRIMARY');
+    assert.ok(primary);
+    assert.equal(primary.cashBalance, 1000);
+    assert.equal(primary.equity, 1000);
+    assert.equal(primary.currentDrawdownPct, 0);
+    assert.equal(primary.dailyPeakEquity, 1000);
+  });
+});
