@@ -23,6 +23,7 @@ import { KalshiSetupWizard } from './components/KalshiSetupWizard';
 import { PaperWalletTab } from './components/PaperWalletTab';
 import { KalshiApiCredentials } from './services/kalshiClient';
 import { Footer } from './components/Footer';
+import { PythonPaperStatus } from './components/PythonPaperStatus';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -130,6 +131,7 @@ export default function App() {
         PAPER orders PAUSED · Kalshi market: {exchangeState?.marketState ?? 'CHECKING'} · Order book: {exchangeState?.quoteState ?? 'CHECKING'} · CF BRTI reference: {exchangeState?.referenceVerified ? 'verified' : 'not verified'}
         {exchangeState?.nextOpen && <span className="block text-xs mt-1 font-normal">Next listed opening: {new Date(exchangeState.nextOpen).toLocaleString()} (local time; not a guarantee of active trading)</span>}
       </div>}
+      <PythonPaperStatus />
       {/* Top Bar Navigation */}
       <Navbar
         activeTab={activeTab}
