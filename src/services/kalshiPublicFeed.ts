@@ -32,11 +32,12 @@ export class KalshiPublicFeed {
   private activeMarket:Kalshi15MMarket|null=null;
   private lastBook:KalshiOrderBook|null=null;
   private lastError:string|null=null;
+  private diagnostics={pages:0,returned:0,eligible:0,checkedAt:0};
   private timer:ReturnType<typeof setInterval>|null=null;
   private inFlight=false;
   private lastTicker: string | null = null;
   constructor(private onUpdate:(market:Kalshi15MMarket,book:KalshiOrderBook)=>void, private onRollover?:(previousTicker:string)=>void){}
-  status(){return {market:this.activeMarket?.ticker||null, bookAgeMs:this.lastBook?Date.now()-this.lastBook.timestamp:null, source:this.lastBook?.source||null, error:this.lastError};}
+  status(){return {market:this.activeMarket?.ticker||null, bookAgeMs:this.lastBook?Date.now()-this.lastBook.timestamp:null, source:this.lastBook?.source||null, error:this.lastError,discovery:this.diagnostics};}
   start(){if(this.timer)return;void this.poll();this.timer=setInterval(()=>void this.poll(),4000);}
   stop(){if(this.timer)clearInterval(this.timer);this.timer=null;this.activeMarket=null;this.lastBook=null;}
   async poll(){
@@ -47,16 +48,32 @@ export class KalshiPublicFeed {
     try{
       const now=Date.now();
       if(!this.activeMarket||this.activeMarket.closeTimestamp<=now+5000){
-        const url=BASE+'/markets?series_ticker=KXBTC15M&status=open&limit=100';
-        const json=await getJson(url,controller.signal);
-        if(!Array.isArray(json.markets))throw Error('Malformed markets response');
-        const candidates=(json.markets as Market[]).filter(m=>
-          m.status==='active'||m.status==='open'||!m.status
-        ).map(m=>({m,close:Date.parse(m.close_time||'')})).filter(x=>
-          x.m.ticker.startsWith('KXBTC15M-')&&Number.isFinite(x.close)&&x.close>now+5000
+        // Kalshi lists future windows too; walk bounded pages and select the
+        // actually open window using the exchange's open_time and close_time.
+        const markets:Market[]=[];
+        let cursor='';
+        let pages=0;
+        do {
+          const url=new URL(BASE+'/markets');
+          url.searchParams.set('series_ticker','KXBTC15M');
+          url.searchParams.set('status','open');
+          url.searchParams.set('limit','200');
+          if(cursor)url.searchParams.set('cursor',cursor);
+          const json=await getJson(url.toString(),controller.signal);
+          if(!Array.isArray(json.markets))throw Error('Malformed Kalshi markets response');
+          markets.push(...json.markets as Market[]);
+          cursor=typeof json.cursor==='string'?json.cursor:'';
+          pages++;
+        }while(cursor&&pages<5);
+        const candidates=markets.map(m=>({
+          m,open:Date.parse(m.open_time||''),close:Date.parse(m.close_time||'')
+        })).filter(x=>x.m.ticker.startsWith('KXBTC15M-') &&
+          Number.isFinite(x.open)&&Number.isFinite(x.close) &&
+          x.open<=now && x.close>now+5000
         ).sort((a,b)=>a.close-b.close);
+        this.diagnostics={pages,returned:markets.length,eligible:candidates.length,checkedAt:now};
         const match=candidates[0]?.m;
-        if(!match){this.activeMarket=null;this.lastBook=null;throw Error('No open KXBTC15M market returned by exchange');}
+        if(!match){this.activeMarket=null;this.lastBook=null;throw Error('No currently trading KXBTC15M window among '+markets.length+' listed markets ('+pages+' pages)');}
         const close=Date.parse(match.close_time!);
         const strike=Number(match.floor_strike??match.cap_strike);
         if(!Number.isFinite(strike)||strike<=0)throw Error('No exchange strike provided');
