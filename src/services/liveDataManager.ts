@@ -27,7 +27,7 @@ export class LiveDataManager {
   private packetListeners: ((packet: LiveMarketPacket) => void)[] = [];
   private dataCollector: KalshiMarketDataCollector;
   private consecutiveErrors = 0;
-  private lastMessageTimestamp = Date.now();
+  private lastMessageTimestamp = 0;
   private latestSpot: BTCSpotObservation | null = null;
   private latestBook: KalshiOrderBook | null = null;
 
@@ -78,8 +78,8 @@ export class LiveDataManager {
    */
   public async connect(marketTicker: string): Promise<boolean> {
     if (this.credentials.environment === 'PAPER') {
-      this.isConnected = true;
-      return true;
+      this.isConnected = false;
+      return false; // PAPER requires a genuine exchange data subscription.
     }
 
     const wsUrl =
@@ -156,7 +156,7 @@ export class LiveDataManager {
   }
 
   public getIsConnected(): boolean {
-    return this.isConnected || this.credentials.environment === 'PAPER';
+    return this.isConnected && Date.now() - this.lastMessageTimestamp < 10000;
   }
 
   private processWebSocketMessage(data: Record<string, unknown>, marketTicker: string) {

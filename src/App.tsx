@@ -41,6 +41,7 @@ export default function App() {
   };
 
   const [backendConnected, setBackendConnected] = useState(false);
+  const [verifiedMarket, setVerifiedMarket] = useState(false);
   const controlsUnavailable = () => alert('Only authenticated backend trading controls are allowed. Browser-local trading is disabled.');
   // Subscribe to real-time central backend engine state changes via WebSocket
   const [, setTick] = useState(0);
@@ -68,6 +69,10 @@ export default function App() {
               if (Number.isFinite(packet.spotPrice)) tradingEngine.currentSpotPrice = packet.spotPrice;
               if (packet.market) tradingEngine.currentMarket = packet.market;
               if (packet.book) tradingEngine.currentBook = packet.book;
+              if (packet.book && packet.mode) {
+                setVerifiedMarket(packet.mode === 'DEMO' ||
+                  (packet.book.source === 'KALSHI_WS' && packet.book.isStale === false));
+              }
               if (Array.isArray(packet.candles)) tradingEngine.candles = packet.candles;
               if (Array.isArray(packet.spotHistory)) tradingEngine.spotHistory = packet.spotHistory;
               if (Array.isArray(packet.riskPortfolios)) tradingEngine.riskManager.hydratePortfolios(packet.riskPortfolios);
@@ -107,6 +112,7 @@ export default function App() {
   return (
     <div className={`min-h-screen transition-colors duration-200 ${theme === 'light' ? 'theme-light bg-slate-50 text-slate-900' : 'bg-[#0a0a0c] text-neutral-100'} flex flex-col font-sans selection:bg-cyan-500 selection:text-black ${isKiosk ? 'p-2' : ''}`}>
       {!backendConnected && <div role="alert" className="bg-red-900 p-3 text-white text-center">Backend disconnected — NO trading will run locally.</div>}
+      {backendConnected && !verifiedMarket && <div role="status" className="bg-amber-900 text-amber-100 p-3 text-center font-semibold">PAPER trading PAUSED — no verified, fresh Kalshi order book. Quotes/markets may be placeholders.</div>}
       {/* Top Bar Navigation */}
       <Navbar
         activeTab={activeTab}
