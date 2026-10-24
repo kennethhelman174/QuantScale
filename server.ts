@@ -128,7 +128,7 @@ async function startServer() {
   const wss = new WebSocketServer({ server, path: '/ws' });
 
   // Exchange REST updates never authorize trading or settlement.
-  const displayMarket = () => exchangeMarket ?? tradingEngine.currentMarket;
+  const displayMarket = () => exchangeMarket;
   const displayBook = () => exchangeBook && Date.now() - exchangeBook.timestamp < 12000
     ? exchangeBook : {
       ...tradingEngine.currentBook,

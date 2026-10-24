@@ -1,7 +1,7 @@
 import type { Kalshi15MMarket, KalshiOrderBook, OrderBookLevel } from '../types/market';
 
 const BASE = 'https://external-api.kalshi.com/trade-api/v2';
-type Market = { ticker: string; title?:string; close_time?:string; open_time?:string; status?:string; floor_strike?:number; cap_strike?:number; open_interest_fp?:string; volume_fp?:string; };
+type Market = { ticker: string; title?:string; close_time?:string; open_time?:string; status?:string; floor_strike?:number; cap_strike?:number; rules_primary?:string; rules_secondary?:string; open_interest_fp?:string; volume_fp?:string; };
 type BookPayload = {orderbook_fp?:{yes_dollars?:[string,string][];no_dollars?:[string,string][]}};
 async function getJson(url:string, signal?:AbortSignal): Promise<any> {
   const res = await fetch(url, {signal,headers:{accept:'application/json'}});
@@ -100,11 +100,15 @@ export class KalshiPublicFeed {
         const match=candidates[0]?.m;
         if(!match){this.activeMarket=null;this.lastBook=null;throw Error('No active KXBTC15M market in current window; '+scheduled+' upcoming initialized markets in the next hour. Trading stays paused.');}
         const close=Date.parse(match.close_time!);
-        const strike=Number(match.floor_strike??match.cap_strike);
-        if(!Number.isFinite(strike)||strike<=0)throw Error('No exchange strike provided');
+        // KXBTC15M settles against the CF Benchmarks RTI comparison.
+        // Never invent a strike from Coinbase spot or use the fixed-strike pricer.
+        const strike=0;
         if(this.lastTicker && this.lastTicker!==match.ticker) this.onRollover?.(this.lastTicker);
         this.lastTicker=match.ticker;
-        this.activeMarket={ticker:match.ticker,title:match.title||match.ticker,strikePrice:strike,
+        this.activeMarket={ticker:match.ticker,title:match.title||match.ticker,
+          contractType:'INDEX_DIRECTION_15M',referenceSource:'CF Benchmarks BRTI',
+          referencePriceVerified:false,rulesPrimary:match.rules_primary,
+          strikePrice:strike,
           openTimestamp:Date.parse(match.open_time||'')||now,closeTimestamp:close,
           settlementTimerSec:Math.max(0,Math.floor((close-now)/1000)),status:'OPEN',
           openInterest:Number(match.open_interest_fp||0),volume:Number(match.volume_fp||0)};
