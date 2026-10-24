@@ -130,7 +130,12 @@ async function startServer() {
   // Exchange REST updates never authorize trading or settlement.
   const displayMarket = () => exchangeMarket ?? tradingEngine.currentMarket;
   const displayBook = () => exchangeBook && Date.now() - exchangeBook.timestamp < 12000
-    ? exchangeBook : { ...tradingEngine.currentBook, isStale: true };
+    ? exchangeBook : {
+      ...tradingEngine.currentBook,
+      // Suppress fabricated ladder liquidity when there is no verified exchange book.
+      yesBids: [], yesAsks: [], noBids: [], noAsks: [], spread: 0,
+      midPrice: 0, microImbalance: 0, isEmpty: true, isStale: true,
+    };
   const broadcastExchange = () => {
     const packet = JSON.stringify({ type: 'KALSHI_OBSERVATION', market: displayMarket(),
       book: displayBook(), feed: publicFeed.status() });
