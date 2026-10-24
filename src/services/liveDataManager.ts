@@ -28,9 +28,27 @@ export class LiveDataManager {
   private dataCollector: KalshiMarketDataCollector;
   private consecutiveErrors = 0;
   private lastMessageTimestamp = Date.now();
+  private latestSpot: BTCSpotObservation | null = null;
+  private latestBook: KalshiOrderBook | null = null;
 
   constructor(dataCollector: KalshiMarketDataCollector) {
     this.dataCollector = dataCollector;
+  }
+
+  public getLatestSpot(): BTCSpotObservation | null {
+    return this.latestSpot;
+  }
+
+  public getLatestBook(): KalshiOrderBook | null {
+    return this.latestBook;
+  }
+
+  public setLatestSpot(spot: BTCSpotObservation) {
+    this.latestSpot = spot;
+  }
+
+  public setLatestBook(book: KalshiOrderBook) {
+    this.latestBook = book;
   }
 
   public setCredentials(creds: KalshiApiCredentials) {

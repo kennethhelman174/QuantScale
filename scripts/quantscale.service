@@ -1,13 +1,14 @@
 [Unit]
 Description=QuantScale 24/7 Bitcoin Prediction Market Execution Engine
-After=network.target sqlite3.service
+After=network.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=pi
-WorkingDirectory=/home/pi/QuantScale
-ExecStart=/usr/bin/npm run dev
+Group=pi
+WorkingDirectory=/opt/quantscale
+ExecStart=/usr/bin/npm start
 Restart=always
 RestartSec=5s
 Environment=NODE_ENV=production

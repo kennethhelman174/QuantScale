@@ -6,10 +6,11 @@
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
     "start": "tsx server.ts",
-    "build": "vite build",
+    "build": "mkdir -p public && cp node_modules/sql.js/dist/sql-wasm.wasm public/sql-wasm.wasm && vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "tsx --test src/tests/quantscale.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -36,7 +37,7 @@
     "@types/sql.js": "^1.4.11",
     "@types/ws": "^8.18.2",
     "autoprefixer": "^10.4.21",
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.28.0",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.21.0",
     "typescript": "^7.0.2"

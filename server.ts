@@ -1,4 +1,4 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import http from 'http';
 import path from 'path';
 import fs from 'fs';
@@ -13,6 +13,7 @@ const __dirname = path.dirname(__filename);
 
 const PORT = Number(process.env.PORT) || 3000;
 const LOCK_FILE = path.join(__dirname, '.engine.lock');
+const ADMIN_API_KEY = process.env.ADMIN_API_KEY || 'quantscale-pi4-admin-secret';
 
 // Manage single-writer process lock
 function acquireEngineLock(): boolean {
@@ -51,6 +52,18 @@ function releaseEngineLock() {
   } catch (err) {
     console.error(`[EngineLock] Error releasing lock file:`, err);
   }
+}
+
+// Authentication middleware for administrative mutations
+function authenticateAdmin(req: Request, res: Response, next: NextFunction) {
+  const apiKey = req.headers['x-api-key'] || req.query.apiKey || req.body?.apiKey;
+  if (process.env.NODE_ENV === 'production') {
+    if (!apiKey || apiKey !== ADMIN_API_KEY) {
+      res.status(401).json({ error: 'Unauthorized: Invalid or missing X-API-KEY header.' });
+      return;
+    }
+  }
+  next();
 }
 
 async function startServer() {
@@ -104,6 +117,8 @@ async function startServer() {
       spotPrice: tradingEngine.currentSpotPrice,
       market: tradingEngine.currentMarket,
       book: tradingEngine.currentBook,
+      positions: tradingEngine.positions,
+      orders: tradingEngine.orders,
       positionsCount: tradingEngine.positions.length,
       ordersCount: tradingEngine.orders.length,
       isAutoTrading: tradingEngine.isAutoTrading,
@@ -178,8 +193,8 @@ async function startServer() {
     });
   });
 
-  // Wallet deposit
-  app.post('/api/wallet/deposit', (req: Request, res: Response) => {
+  // Wallet deposit (Authenticated)
+  app.post('/api/wallet/deposit', authenticateAdmin, (req: Request, res: Response) => {
     const { amountDollars, note } = req.body;
     const dollars = parseFloat(amountDollars);
     if (isNaN(dollars) || dollars <= 0) {
@@ -205,8 +220,8 @@ async function startServer() {
     res.json({ success: true, wallet: dbEngine.getWallet(mode) });
   });
 
-  // Wallet withdrawal
-  app.post('/api/wallet/withdraw', (req: Request, res: Response) => {
+  // Wallet withdrawal (Authenticated)
+  app.post('/api/wallet/withdraw', authenticateAdmin, (req: Request, res: Response) => {
     const { amountDollars, note } = req.body;
     const dollars = parseFloat(amountDollars);
     if (isNaN(dollars) || dollars <= 0) {
@@ -238,8 +253,8 @@ async function startServer() {
     res.json({ success: true, wallet: dbEngine.getWallet(mode) });
   });
 
-  // Paper wallet reset
-  app.post('/api/wallet/reset', (req: Request, res: Response) => {
+  // Paper wallet reset (Authenticated)
+  app.post('/api/wallet/reset', authenticateAdmin, (req: Request, res: Response) => {
     const { startingBankrollDollars } = req.body;
     const dollars = parseFloat(startingBankrollDollars) || 1000;
     const cents = Math.round(dollars * 100);
@@ -248,14 +263,21 @@ async function startServer() {
     res.json({ success: true, wallet: dbEngine.getWallet('PAPER') });
   });
 
-  // Switch execution mode
+  // Switch execution mode (Strictly Authenticated)
   app.post('/api/mode', (req: Request, res: Response) => {
-    const { mode, operatorConfirmation } = req.body;
-    if (mode === 'LIVE' && !operatorConfirmation) {
-      res.status(403).json({
-        error: 'Explicit operator confirmation required to enable LIVE authenticated trading mode.',
-      });
-      return;
+    const { mode, apiKey, operatorConfirmationText } = req.body;
+
+    if (mode === 'LIVE') {
+      if (process.env.NODE_ENV === 'production' && apiKey !== ADMIN_API_KEY) {
+        res.status(401).json({ error: 'Unauthorized: Invalid admin secret key for LIVE activation.' });
+        return;
+      }
+      if (operatorConfirmationText !== 'I AGREE TO RISK REAL CAPITAL ON KALSHI') {
+        res.status(403).json({
+          error: 'Explicit operator risk confirmation text required: "I AGREE TO RISK REAL CAPITAL ON KALSHI"',
+        });
+        return;
+      }
     }
 
     if (!['SIMULATION', 'PAPER', 'LIVE'].includes(mode)) {
@@ -278,8 +300,13 @@ async function startServer() {
     res.json(githubUpdater.getStatus());
   });
 
-  app.post('/api/update/check', async (_req: Request, res: Response) => {
+  app.post('/api/update/check', authenticateAdmin, async (_req: Request, res: Response) => {
     const result = await githubUpdater.checkUpdate();
+    res.json(result);
+  });
+
+  app.post('/api/update/deploy', authenticateAdmin, async (_req: Request, res: Response) => {
+    const result = await githubUpdater.performSafeDeployment();
     res.json(result);
   });
 

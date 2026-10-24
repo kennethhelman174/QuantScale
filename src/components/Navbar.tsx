@@ -8,6 +8,7 @@ import React, { useState, useEffect } from 'react';
 import { ExecutionMode } from '../types/market';
 import { ShieldAlert, Play, Pause, Bell, Sun, Moon } from 'lucide-react';
 import { alertManager } from '../services/alertManager';
+import { BtcSparkline } from './BtcSparkline';
 
 interface NavbarProps {
   activeTab: string;
@@ -23,6 +24,8 @@ interface NavbarProps {
   onToggleKiosk: () => void;
   theme?: 'dark' | 'light';
   onToggleTheme?: () => void;
+  spotPrice?: number;
+  spotHistory?: number[];
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -39,6 +42,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onToggleKiosk,
   theme = 'dark',
   onToggleTheme,
+  spotPrice,
+  spotHistory = [],
 }) => {
   const [activeAlertsCount, setActiveAlertsCount] = useState(
     alertManager.getRules().filter((r) => r.isEnabled).length
@@ -69,7 +74,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <header className="sticky top-0 z-50 flex items-center justify-between gap-8 px-6 py-3.5 bg-neutral-950/95 backdrop-blur-md border-b border-neutral-800">
-      {/* Zone 1: Brand Wordmark (Single text element) */}
+      {/* Zone 1: Brand Wordmark & 1H BTC Sparkline */}
       <div className="flex items-center gap-3 shrink-0">
         <a
           href="#overview"
@@ -80,10 +85,10 @@ export const Navbar: React.FC<NavbarProps> = ({
           className="text-base font-bold tracking-tight text-white whitespace-nowrap flex items-center gap-2"
         >
           <span className="text-cyan-400 font-mono">K-ALPHA</span>
-          <span className="text-neutral-400 font-normal">Kalshi BTC 15M</span>
+          <span className="text-neutral-400 font-normal hidden xl:inline">Kalshi BTC 15M</span>
         </a>
         <span className="text-neutral-700">|</span>
-        {/* Environment status indicator as clean unboxed text */}
+        {/* Environment status indicator */}
         <div className="flex items-center gap-1.5 text-xs">
           <span
             className={`font-mono font-semibold tracking-wider ${
@@ -96,9 +101,15 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             [{mode}]
           </span>
-          <span className="text-neutral-500">·</span>
-          <span className="text-neutral-400 font-mono text-[11px]">v1.2.4</span>
         </div>
+
+        {/* 1-Hour Rolling BTC Spot Trend Sparkline */}
+        {spotPrice !== undefined && (
+          <>
+            <span className="text-neutral-700 hidden sm:inline">|</span>
+            <BtcSparkline spotPrice={spotPrice} spotHistory={spotHistory} />
+          </>
+        )}
       </div>
 
       {/* Zone 2: Navigation Links (single-line, concise) */}

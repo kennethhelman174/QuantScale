@@ -6,7 +6,17 @@
  * Runs in Node.js (with file persistence) and Browser environments (with localStorage fallback).
  */
 
-import initSqlJs, { Database as SqlDatabase } from 'sql.js';
+import initSqlJsModule, { Database as SqlDatabase } from 'sql.js';
+
+const getInitSqlJs = () => {
+  if (typeof initSqlJsModule === 'function') {
+    return initSqlJsModule;
+  }
+  if (initSqlJsModule && typeof (initSqlJsModule as any).default === 'function') {
+    return (initSqlJsModule as any).default;
+  }
+  return initSqlJsModule;
+};
 
 const isNode = typeof window === 'undefined' && typeof process !== 'undefined' && process.versions && !!process.versions.node;
 
@@ -68,8 +78,44 @@ export class DatabaseEngine {
     await loadNodeModules();
 
     try {
-      const SQL = await initSqlJs({
-        locateFile: (file) => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.12.0/${file}`,
+      let wasmBinary: ArrayBuffer | undefined = undefined;
+
+      if (!isNode && typeof window !== 'undefined') {
+        const candidateUrls = [
+          '/sql-wasm.wasm',
+          '/node_modules/sql.js/dist/sql-wasm.wasm',
+          'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.12.0/sql-wasm.wasm',
+        ];
+
+        for (const url of candidateUrls) {
+          try {
+            const response = await fetch(url);
+            if (response.ok) {
+              const buffer = await response.arrayBuffer();
+              if (buffer.byteLength >= 4) {
+                const header = new Uint8Array(buffer.slice(0, 4));
+                // Verify WASM magic header: \0asm (0x00, 0x61, 0x73, 0x6d)
+                if (header[0] === 0x00 && header[1] === 0x61 && header[2] === 0x73 && header[3] === 0x6d) {
+                  wasmBinary = buffer;
+                  break;
+                }
+              }
+            }
+          } catch {
+            // Proceed to next candidate URL
+          }
+        }
+      }
+
+      const initFn = getInitSqlJs();
+      const SQL = await initFn({
+        wasmBinary,
+        locateFile: (file: string) => {
+          if (isNode && nodePath) {
+            return nodePath.join(process.cwd(), 'node_modules', 'sql.js', 'dist', file);
+          }
+          return `/${file}`;
+        },
       });
 
       if (isNode && nodeFs && nodePath) {

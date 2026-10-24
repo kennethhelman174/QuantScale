@@ -63,6 +63,7 @@ export interface BTCSpotObservation {
   return1m: number;
   return5m: number;
   realizedVol15m: number; // annualized or 15m basis
+  isStale?: boolean;
 }
 
 export interface Kalshi15MMarket {

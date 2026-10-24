@@ -40,15 +40,57 @@ export default function App() {
     localStorage.setItem('quantscale_theme', nextTheme);
   };
 
-  // Subscribe to real-time engine state changes
+  // Subscribe to real-time central backend engine state changes via WebSocket
   const [, setTick] = useState(0);
   useEffect(() => {
-    // Start trading engine
-    tradingEngine.start();
+    let socket: WebSocket | null = null;
+    let isConnectedToServer = false;
+
+    if (typeof window !== 'undefined') {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}/ws`;
+
+      try {
+        socket = new WebSocket(wsUrl);
+
+        socket.onopen = () => {
+          isConnectedToServer = true;
+          tradingEngine.logDiagnostic('INFO', 'ORDER_ROUTING', 'Dashboard client synced with central QuantScale backend server.');
+        };
+
+        socket.onmessage = (event) => {
+          try {
+            const packet = JSON.parse(event.data);
+            if (packet.type === 'TICK_UPDATE' || packet.type === 'STATE_SNAPSHOT') {
+              if (packet.spotPrice) tradingEngine.currentSpotPrice = packet.spotPrice;
+              if (packet.mode) tradingEngine.mode = packet.mode;
+              if (packet.positions) tradingEngine.positions = packet.positions;
+              if (packet.orders) tradingEngine.orders = packet.orders;
+              setTick((t) => t + 1);
+            }
+          } catch {
+            // Ignored
+          }
+        };
+
+        socket.onerror = () => {
+          if (!isConnectedToServer) {
+            tradingEngine.start();
+          }
+        };
+      } catch {
+        tradingEngine.start();
+      }
+    } else {
+      tradingEngine.start();
+    }
+
     const unsubscribe = tradingEngine.subscribe(() => {
       setTick((t) => t + 1);
     });
+
     return () => {
+      if (socket) socket.close();
       unsubscribe();
     };
   }, []);
@@ -119,6 +161,8 @@ export default function App() {
         onToggleKiosk={() => setIsKiosk(!isKiosk)}
         theme={theme}
         onToggleTheme={handleToggleTheme}
+        spotPrice={tradingEngine.currentSpotPrice}
+        spotHistory={tradingEngine.spotHistory}
       />
 
       {/* Floating Volatility & Price-Action Visual Alert Toasts */}

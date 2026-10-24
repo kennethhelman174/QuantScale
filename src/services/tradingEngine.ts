@@ -200,9 +200,24 @@ export class TradingEngine {
   public tick() {
     const now = Date.now();
 
-    // 1. Advance spot BTC with realistic micro-volatility
-    const spotDelta = (Math.random() - 0.495) * 22; // Micro-movements
-    this.currentSpotPrice = Math.round((this.currentSpotPrice + spotDelta) * 100) / 100;
+    // 1. Advance spot BTC: DEMO uses synthetic Math.random(), PAPER/LIVE uses authentic real market feed
+    let isFeedStale = false;
+    if (this.mode === 'DEMO') {
+      const spotDelta = (Math.random() - 0.495) * 22;
+      this.currentSpotPrice = Math.round((this.currentSpotPrice + spotDelta) * 100) / 100;
+    } else {
+      const liveSpot = this.liveDataManager.getLatestSpot();
+      if (liveSpot && !liveSpot.isStale && liveSpot.price > 0) {
+        this.currentSpotPrice = liveSpot.price;
+      } else {
+        isFeedStale = true;
+        // In PAPER/LIVE mode, if feed is disconnected or stale, log warning
+        if (Math.random() < 0.1) {
+          this.logDiagnostic('WARN', 'MARKET_DATA', 'Spot data feed is stale or disconnected. Halting automated execution.');
+        }
+      }
+    }
+
     this.spotHistory.push(this.currentSpotPrice);
     if (this.spotHistory.length > 500) this.spotHistory.shift();
 
