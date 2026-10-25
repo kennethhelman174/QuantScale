@@ -66,6 +66,16 @@ def connect(path):
         promotions INTEGER NOT NULL DEFAULT 0
       );
     """)
+    # Add provenance without reclassifying old backfilled observations.
+    cols = {r[1] for r in db.execute("PRAGMA table_info(predictions)")}
+    if "origin" not in cols:
+        db.execute("ALTER TABLE predictions ADD COLUMN origin TEXT NOT NULL DEFAULT 'legacy_backfill'")
+    if "issued_at" not in cols:
+        db.execute("ALTER TABLE predictions ADD COLUMN issued_at INTEGER")
+    db.execute("""CREATE TABLE IF NOT EXISTS promotion_events(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, recorded_at INTEGER NOT NULL,
+        event TEXT NOT NULL, details TEXT NOT NULL
+    )""")
     db.execute("INSERT OR IGNORE INTO model_state(singleton,champion_weights,challenger_weights) VALUES (1,?,?)", (json.dumps([0, 0, 0, 0]), json.dumps([0, 0, 0, 0])))
     db.commit()
     return db
@@ -108,24 +118,17 @@ def process(db, now, granularity=900, *, minimum_evaluations=50, margin=0.005):
                     scored += 1
                     newly_scored += 1
                     challenger = update_weights(challenger, vector(source), y, 0.04)
-                    # Compare predictions made before outcomes were revealed.
-                    recent = db.execute("SELECT probability,challenger_probability,outcome FROM predictions WHERE outcome IS NOT NULL ORDER BY target_ts DESC LIMIT ?", (minimum_evaluations,)).fetchall()
-                    if len(recent) == minimum_evaluations:
-                        base_loss = sum((p - y0)**2 for p, _, y0 in recent) / len(recent)
-                        challenger_loss = sum((cp - y0)**2 for _, cp, y0 in recent) / len(recent)
-                        if challenger_loss + margin < base_loss:
-                            champion = challenger.copy()
-                            promotions += 1
-                            # Reset challenger to champion for another evaluation cycle.
-                            # History is retained for audit; future challenger is independently scored.
-                            challenger = champion.copy()
+                    # v0.4: no unattended champion promotions. Historical replay
+                    # cannot establish forward superiority. Challenger still learns.
             target = ts + granularity
             # A prediction is issued from a completed candle only. For older
             # history, results are evaluated at the later candle's close.
             if db.execute("SELECT 1 FROM predictions WHERE target_ts=?", (target,)).fetchone() is None:
                 x = vector(candle)
-                db.execute("INSERT INTO predictions(target_ts,source_ts,probability,challenger_probability) VALUES(?,?,?,?)",
-                           (target, ts, probability(champion, x), probability(challenger, x)))
+                db.execute("INSERT INTO predictions(target_ts,source_ts,probability,challenger_probability,origin,issued_at) VALUES(?,?,?,?,?,?)",
+                           (target, ts, probability(champion, x), probability(challenger, x),
+                            "forward" if target >= completed else "backfill",
+                            now if target >= completed else None))
         db.execute("UPDATE model_state SET champion_weights=?, challenger_weights=?, scored_count=?, promotions=? WHERE singleton=1",
                    (json.dumps(champion), json.dumps(challenger), scored, promotions))
     latest = db.execute("SELECT target_ts,probability FROM predictions WHERE outcome IS NULL ORDER BY target_ts DESC LIMIT 1").fetchone()
@@ -133,7 +136,7 @@ def process(db, now, granularity=900, *, minimum_evaluations=50, margin=0.005):
             "evaluations": scored, "model_promotions": promotions,
             "next_prediction": {"target_utc": datetime.fromtimestamp(latest[0], timezone.utc).isoformat(),
                                 "probability_up": round(latest[1], 6)} if latest else None,
-            "trading_enabled": False, "model": "bounded_online_logistic_research_v0"}
+            "trading_enabled": False, "promotion_policy": "frozen_pending_forward_validation", "model": "bounded_online_logistic_research_v0.4"}
 
 
 def run(db_path, days=7):
