@@ -29,7 +29,7 @@ def utc_seconds(value: str) -> int:
     return int(dt.timestamp())
 
 
-def validate_candle(record: object, granularity: int) -> tuple[int, ... | float]:
+def validate_candle(record: object, granularity: int) -> tuple:
     if not isinstance(record, list) or len(record) != 6:
         raise ValueError("Unexpected candle shape")
     ts, low, high, op, close, volume = record
