@@ -240,6 +240,37 @@ async function startServer() {
     res.json({signal:evaluateWindowDirection(exchangeMarket,feed.samples),proxyFeed:{error:feed.error,lastSeen:feed.lastSeen},observationOnly:true,ordersEnabled:false});
   });
 
+  // Read-only go/no-go report. Never unlock execution from this endpoint.
+  app.get('/api/paper/readiness', (_req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const python = pythonBridge.status();
+    const feed = publicFeed.status();
+    const bookFresh = !!exchangeBook && exchangeBook.source === 'KALSHI_REST'
+      && !exchangeBook.isEmpty && Date.now() - exchangeBook.timestamp < 12000;
+    const pythonSnapshot = python.connected ? python.snapshot : null;
+    const py = pythonSnapshot as Record<string, any> | null;
+    const checks = [
+      {id:'database',pass:isPrimary,detail:isPrimary?'Single primary writer':'No primary writer'},
+      {id:'paper_mode',pass:tradingEngine.mode === 'PAPER',detail:tradingEngine.mode},
+      {id:'live_disarmed',pass:tradingEngine.mode !== 'LIVE',detail:'LIVE not enabled'},
+      {id:'quant_auto_disabled',pass:!tradingEngine.isAutoTrading,detail:'QuantScale automated orders must remain disabled'},
+      {id:'python_bridge_fresh',pass:python.connected,detail:python.connected?'Read-only snapshot current':python.error},
+      {id:'python_paper_identity',pass:!!py && typeof py.executionId === 'string'
+        && typeof py.paper?.equity === 'number',detail:'Independent Python paper ledger'},
+      {id:'kalshi_active_market',pass:!!exchangeMarket,detail:exchangeMarket?.ticker ?? 'No active contract'},
+      {id:'kalshi_fresh_book',pass:bookFresh,detail:bookFresh?'Fresh REST book':'Unavailable or stale'},
+      {id:'official_reference',pass:feed.referencePriceVerified === true,detail:'QuantScale official reference not independently verified'},
+      {id:'calibrated_model',pass:false,detail:'QuantScale calibration requires official out-of-sample outcomes'},
+      {id:'settlement_reconciled',pass:false,detail:'No verified end-to-end QuantScale settlement reconciliation'},
+    ];
+    const prerequisites = checks.filter(check=>!check.pass).map(check=>check.id);
+    res.json({status:'BLOCKED_FOR_QUANTSCALE_AUTOMATION',pythonPaperObservationReady:python.connected
+      && !!py && typeof py.paper?.equity === 'number',
+      quantScaleAutoTradingAllowed:false,liveTradingAllowed:false,
+      checks,blockingPrerequisites:prerequisites,feedState:feed.marketState,
+      asOf:new Date().toISOString(),walletsSeparate:true});
+  });
+
   app.get('/api/python-paper/status', (_req: Request, res: Response) => {
     res.setHeader('Cache-Control','no-store');
     res.json(pythonBridge.status());
