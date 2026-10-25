@@ -305,7 +305,7 @@ async function startServer() {
         reconciliation:paperConsistency({execution,totals,quoteFresh:feed.quote_fresh===true}),
         connected:true,readOnly:true,walletsSeparate:true,paperOnly:source.paper_only===true,
         executionId:source.execution_id,asOf:number(source.server_time),
-        marketTicker:label(market.ticker),strategy:label(source.strategy),
+        marketTicker:label(market.ticker),strategy:label(source.strategy),paused:source.paused===true,
         feed:{status:label(feed.status),heartbeatAge:number(feed.heartbeat_age),quoteAge:number(feed.quote_age),
           quoteFresh:feed.quote_fresh===true,heartbeatFresh:feed.heartbeat_fresh===true},
         wallet:{initial:number(execution.initial),cash:number(execution.cash),equity:number(execution.equity),
