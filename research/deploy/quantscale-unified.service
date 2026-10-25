@@ -1,0 +1,7 @@
+[Unit]
+Description=QuantScale unified research read-only report
+After=quantscale-learning.service quantscale-lab.service
+[Service]
+Type=oneshot
+ExecStart=/opt/quantscale-research/current/venv/bin/python -m quantscale.unified
+TimeoutStartSec=120

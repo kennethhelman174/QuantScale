@@ -1,0 +1,9 @@
+[Unit]
+Description=QuantScale unified research report five-minute refresh
+[Timer]
+OnBootSec=6min
+OnUnitInactiveSec=5min
+RandomizedDelaySec=20s
+Persistent=true
+[Install]
+WantedBy=timers.target
