@@ -9,7 +9,7 @@ import React, { useState, useEffect, useSyncExternalStore } from 'react';
 import { tradingEngine } from './services/tradingEngine';
 import { Position } from './types/market';
 import { Navbar } from './components/Navbar';
-import { OverviewTab } from './components/OverviewTab';
+import { PaperHome } from './components/PaperHome';
 import { PositionsTab } from './components/PositionsTab';
 import { StrategiesTab } from './components/StrategiesTab';
 import { ResearchTab } from './components/ResearchTab';
@@ -43,7 +43,6 @@ export default function App() {
   };
 
   const [backendConnected, setBackendConnected] = useState(false);
-  const [verifiedMarket, setVerifiedMarket] = useState(false);
   const [backendRunning, setBackendRunning] = useState(false);
   const [exchangeState, setExchangeState] = useState<{marketState:string;quoteState:string;nextOpen:string|null;referenceVerified:boolean}|null>(null);
   const controlsUnavailable = () => alert('Only authenticated backend trading controls are allowed. Browser-local trading is disabled.');
@@ -82,10 +81,6 @@ export default function App() {
               if (Number.isFinite(packet.spotPrice)) tradingEngine.currentSpotPrice = packet.spotPrice;
               if (packet.market) tradingEngine.currentMarket = packet.market;
               if (packet.book) tradingEngine.currentBook = packet.book;
-              if (packet.book && packet.mode) {
-                setVerifiedMarket(packet.mode === 'DEMO' ||
-                  (packet.book.source === 'KALSHI_WS' && packet.book.isStale === false));
-              }
               if (Array.isArray(packet.candles)) tradingEngine.candles = packet.candles;
               if (Array.isArray(packet.spotHistory)) tradingEngine.spotHistory = packet.spotHistory;
               if (Array.isArray(packet.riskPortfolios)) tradingEngine.riskManager.hydratePortfolios(packet.riskPortfolios);
@@ -117,10 +112,8 @@ export default function App() {
     };
   }, []);
 
-  const primaryRisk = tradingEngine.riskManager.getPortfolio('PRIMARY')!;
   const allPortfolios = tradingEngine.riskManager.getAllPortfolios();
 
-  const handleManualOrder = (_side: 'YES' | 'NO', _price: number, _contracts: number) => controlsUnavailable();
   const handleClosePosition = (_pos: Position) => controlsUnavailable();
   const handleCancelOrder = (_orderId: string) => controlsUnavailable();
   const handleToggleEngine = () => controlsUnavailable();
@@ -165,26 +158,7 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6">
-        {activeTab === 'overview' && !verifiedMarket && (<section role="status" className="rounded-xl border border-amber-800 bg-amber-950/30 p-5 space-y-2"><h2 className="font-bold text-amber-200">QuantScale paper execution not ready</h2><p className="text-sm text-neutral-300">The legacy fixed-strike chart and simulated order book are hidden because no verified tradable order book is connected. The Python paper engine is independently running and can be monitored in its own dashboard. QuantScale automated order routing remains locked.</p><p className="text-xs text-neutral-400">Check /api/paper/readiness for outstanding verification requirements. No live or paper trading is activated by this view.</p></section>)}
-        {activeTab === 'overview' && verifiedMarket && (
-          <OverviewTab
-            market={tradingEngine.currentMarket}
-            book={tradingEngine.currentBook}
-            spotPrice={tradingEngine.currentSpotPrice}
-            candles={tradingEngine.candles}
-            positions={tradingEngine.positions}
-            riskState={primaryRisk}
-            decisions={tradingEngine.decisionsLog}
-            onManualOrder={handleManualOrder}
-            isAutoTrading={tradingEngine.isAutoTrading}
-            onToggleAutoTrading={controlsUnavailable}
-            autoTradingMode={tradingEngine.autoTradingMode}
-            onSetAutoTradingMode={controlsUnavailable}
-            autoTradeCount={tradingEngine.autoTradeCount}
-            lastAutoTradeSummary={tradingEngine.lastAutoTradeSummary}
-            onTriggerAutoTrade={() => ({ executed: false, message: 'Use authenticated backend controls.' })}
-          />
-        )}
+        {activeTab === 'overview' && <PaperHome openHistory={() => setActiveTab('python-paper')} />}
 
         {activeTab === 'python-paper' && <PythonPaperOperations />}
 
