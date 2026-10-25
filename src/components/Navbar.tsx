@@ -146,7 +146,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Auto-Trading Bot Toggle */}
         <button
-          onClick={onToggleAutoTrading}
+          disabled aria-disabled="true" onClick={onToggleAutoTrading}
           title={
             isAutoTrading
               ? 'Autonomous Bot is actively trading. Click to pause.'
@@ -163,12 +163,12 @@ export const Navbar: React.FC<NavbarProps> = ({
               isAutoTrading ? 'bg-emerald-400 animate-pulse' : 'bg-neutral-500'
             }`}
           />
-          <span className="font-mono">{isAutoTrading ? 'AUTO-TRADE: ON' : 'AUTO-TRADE: OFF'}</span>
+          <span className="font-mono">{'AUTO-TRADE: LOCKED'}</span>
         </button>
 
         {/* Start / Pause Engine */}
         <button
-          onClick={onToggleEngine}
+          disabled aria-disabled="true" onClick={onToggleEngine}
           className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded transition-colors whitespace-nowrap ${
             isRunning
               ? 'bg-neutral-800 text-neutral-200 hover:bg-neutral-700'
@@ -178,12 +178,12 @@ export const Navbar: React.FC<NavbarProps> = ({
           {isRunning ? (
             <>
               <Pause className="w-3.5 h-3.5" />
-              <span>Pause</span>
+              <span>Locked</span>
             </>
           ) : (
             <>
               <Play className="w-3.5 h-3.5" />
-              <span>Resume</span>
+              <span>Locked</span>
             </>
           )}
         </button>
@@ -209,11 +209,11 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* API Setup Wizard Button */}
         <button
-          onClick={onOpenSetupWizard}
+          disabled aria-disabled="true" onClick={onOpenSetupWizard}
           title="Configure Kalshi API Credentials & Real-World Feed"
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-cyan-300 bg-cyan-950/50 hover:bg-cyan-900/60 border border-cyan-800/60 rounded transition-colors whitespace-nowrap"
         >
-          <span>API Setup</span>
+          <span>API Setup Locked</span>
         </button>
 
         {/* Theme Toggle Button (Dark / Day Mode) */}
