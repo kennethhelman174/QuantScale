@@ -32,3 +32,22 @@ def test_only_closed_candles(tmp_path):
     r=run(src,tmp_path/"lab.sqlite3",now=900)
     assert r["source_candles"] == 1
     assert r["forward_forecasts_issued"] == 0
+
+
+def test_specialists_update_only_after_resolved_outcome(tmp_path):
+    src=tmp_path/"src.sqlite3"
+    db=connect(src)
+    ingest(db,[candle(0,100), candle(900,101)])
+    db.close()
+    lab=tmp_path/"lab.sqlite3"
+    run(src,lab,now=1800)
+    with sqlite3.connect(lab) as d:
+        before=d.execute("SELECT value FROM weights WHERE model='momentum'").fetchone()[0]
+    db=connect(src)
+    ingest(db,[candle(1800,102)])
+    db.close()
+    run(src,lab,now=2700)
+    with sqlite3.connect(lab) as d:
+        after=d.execute("SELECT value FROM weights WHERE model='momentum'").fetchone()[0]
+        assert d.execute("SELECT COUNT(*) FROM forecasts WHERE origin='forward' AND outcome IS NOT NULL").fetchone()[0] == len(NAMES)
+    assert before != after
