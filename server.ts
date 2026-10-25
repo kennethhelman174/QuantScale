@@ -271,6 +271,63 @@ async function startServer() {
       asOf:new Date().toISOString(),walletsSeparate:true});
   });
 
+  // Sanitized, bounded read-only history from the Python dashboard.
+  app.get('/api/python-paper/operations', async (_req: Request, res: Response) => {
+    res.setHeader('Cache-Control','no-store');
+    const bridge = pythonBridge.status();
+    if (!bridge.connected || !bridge.snapshot) {
+      res.status(503).json({connected:false,error:'Python paper heartbeat unavailable',readOnly:true});
+      return;
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2500);
+    try {
+      const upstream = await fetch('http://127.0.0.1:8765/api/status', {
+        signal:controller.signal, headers:{Accept:'application/json',Host:'127.0.0.1:8765'}
+      });
+      if (!upstream.ok) throw new Error('Python status unavailable');
+      const raw = await upstream.text();
+      if (raw.length > 2500000) throw new Error('Python status exceeds limit');
+      const source = JSON.parse(raw);
+      const snapshot = bridge.snapshot as Record<string,unknown>;
+      if (source.execution_id !== snapshot.executionId) throw new Error('Paper wallet identity mismatch');
+      const number = (v:unknown) => typeof v === 'number' && Number.isFinite(v) ? v : null;
+      const label = (v:unknown) => typeof v === 'string' ? v.slice(0,120) : null;
+      const object = (v:unknown):Record<string,any> => v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string,any> : {};
+      const execution = object(source.execution);
+      const feed = object(source.feed);
+      const market = object(source.market);
+      const totals = object(execution.totals);
+      const trades = Array.isArray(execution.trades) ? execution.trades.slice(0,30) : [];
+      const positions = Array.isArray(execution.positions) ? execution.positions.slice(0,20) : [];
+      res.json({
+        connected:true,readOnly:true,walletsSeparate:true,paperOnly:source.paper_only===true,
+        executionId:source.execution_id,asOf:number(source.server_time),
+        marketTicker:label(market.ticker),strategy:label(source.strategy),
+        feed:{status:label(feed.status),heartbeatAge:number(feed.heartbeat_age),quoteAge:number(feed.quote_age),
+          quoteFresh:feed.quote_fresh===true,heartbeatFresh:feed.heartbeat_fresh===true},
+        wallet:{initial:number(execution.initial),cash:number(execution.cash),equity:number(execution.equity),
+          totalPnl:number(execution.total_pnl),unrealizedNet:number(execution.unrealized_net),
+          dailyPnl:number(execution.daily_pnl),dailyHalt:execution.daily_halt===true,drawdownHalt:execution.drawdown_halt===true},
+        totals:{closedTrades:number(totals.closed_trades),realizedNet:number(totals.realized_net),
+          closedFees:number(totals.closed_fees),wins:number(totals.wins)},
+        strategies:Array.isArray(execution.strategy_totals)?execution.strategy_totals.slice(0,8).map((x:unknown)=>{
+          const row=object(x);return {name:label(row.strategy),closedTrades:number(row.closed_trades),
+            net:number(row.net),fees:number(row.fees)};
+        }):[],
+        positions:positions.map((x:unknown)=>{const p=object(x);return {ticker:label(p.ticker),
+          side:label(p.side),strategy:label(p.strategy),qty:number(p.qty),entry:number(p.entry),
+          unrealizedPnl:number(p.unrealized_pnl)};}),
+        trades:trades.map((x:unknown)=>{const t=object(x);return {id:number(t.id),ts:number(t.ts),
+          ticker:label(t.ticker),strategy:label(t.strategy),side:label(t.side),
+          qty:number(t.qty),entry:number(t.entry),exit:number(t.exit),net:number(t.net),
+          gross:number(t.gross),fees:number(t.fees),reason:label(t.reason)};})
+      });
+    } catch (_error) {
+      res.status(503).json({connected:false,error:'Python paper operations unavailable or stale',readOnly:true});
+    } finally {clearTimeout(timeout);}
+  });
+
   app.get('/api/python-paper/status', (_req: Request, res: Response) => {
     res.setHeader('Cache-Control','no-store');
     res.json(pythonBridge.status());
