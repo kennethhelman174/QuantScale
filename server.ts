@@ -14,6 +14,7 @@ import { evaluateWindowDirection } from './src/services/directionResearch';
 import { evaluateQuoteResearch } from './src/services/quoteResearch';
 import { evaluateCalibration } from './src/services/probabilityCalibration';
 import { PythonPaperBridge } from './src/services/pythonPaperBridge';
+import { paperConsistency } from './src/services/paperConsistency';
 import type { Kalshi15MMarket, KalshiOrderBook } from './src/types/market';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -301,6 +302,7 @@ async function startServer() {
       const trades = Array.isArray(execution.trades) ? execution.trades.slice(0,30) : [];
       const positions = Array.isArray(execution.positions) ? execution.positions.slice(0,20) : [];
       res.json({
+        reconciliation:paperConsistency({execution,totals,quoteFresh:feed.quote_fresh===true}),
         connected:true,readOnly:true,walletsSeparate:true,paperOnly:source.paper_only===true,
         executionId:source.execution_id,asOf:number(source.server_time),
         marketTicker:label(market.ticker),strategy:label(source.strategy),
