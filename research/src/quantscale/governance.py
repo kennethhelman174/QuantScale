@@ -75,7 +75,7 @@ def review(lab_path, governance_path, now=None, *, minimum=MIN_SAMPLES):
     try:
         for name in CANDIDATES:
             rows=models_with_forward_predictions(lab,name)
-            valid=[r for r in rows if r[3] == r[3] and r[2] == r[4]
+            valid=[r for r in rows if r[2] == r[4]]
             if len(valid) != len(rows) or any(
                 not (math.isfinite(r[1]) and math.isfinite(r[3]) and 0<=r[1]<=1 and 0<=r[3]<=1 and r[2] in (0,1))
                 for r in rows
