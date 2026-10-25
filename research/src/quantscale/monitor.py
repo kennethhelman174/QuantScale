@@ -35,6 +35,13 @@ def diagnostics(db_path: str | Path, window: int = 100) -> dict:
             "SELECT target_ts,probability,challenger_probability,outcome "
             "FROM predictions WHERE outcome IS NOT NULL ORDER BY target_ts"
         ).fetchall()
+        cols = {r[1] for r in db.execute("PRAGMA table_info(predictions)")}
+        has_origin = "origin" in cols
+        forward_rows = db.execute(
+            "SELECT target_ts,probability,challenger_probability,outcome "
+            "FROM predictions WHERE outcome IS NOT NULL AND origin='forward' ORDER BY target_ts"
+        ).fetchall() if has_origin else []
+        forward_recent = forward_rows[-window:]
         pending = db.execute("SELECT COUNT(*) FROM predictions WHERE outcome IS NULL").fetchone()[0]
         latest = db.execute(
             "SELECT target_ts,probability,challenger_probability FROM predictions "
@@ -65,7 +72,21 @@ def diagnostics(db_path: str | Path, window: int = 100) -> dict:
                            "count": len(bucket),
                            "predicted": _mean([r[1] for r in bucket]),
                            "observed": _mean([r[3] for r in bucket])})
+    forward_champion_brier = score(forward_recent, 1)
+    forward_challenger_brier = score(forward_recent, 2)
+    # A promotion candidate needs independent forward evidence, paired
+    # comparison, and a cooldown. This is advisory; promotion stays frozen.
+    forward_ready = len(forward_recent) >= window
+    forward_delta = (forward_champion_brier - forward_challenger_brier) if forward_ready else None
+    candidate = bool(forward_ready and forward_delta >= 0.01)
     return {
+        "forward_scored": len(forward_rows),
+        "forward_window": window,
+        "forward_champion_brier": forward_champion_brier,
+        "forward_challenger_brier": forward_challenger_brier,
+        "candidate_for_review": candidate,
+        "automatic_promotion_enabled": False,
+        "historical_promotions": state[1],
         "status": "ALERT" if deterioration or worse_than_base else ("INSUFFICIENT_DATA" if len(recent) < window else "MONITORING"),
         "drift_warning": bool(deterioration),
         "underperforming_constant_baseline": bool(worse_than_base),
@@ -85,7 +106,7 @@ def diagnostics(db_path: str | Path, window: int = 100) -> dict:
             "champion_probability_up": latest[1],
             "challenger_probability_up": latest[2],
         } if latest else None,
-        "caveat": "Research replay may include historical backfill. Not proof of forward trading performance.",
+        "caveat": "Historical replay is NOT forward performance. Legacy predictions remain backfill-classified. Automatic champion promotion frozen.",
     }
 
 
@@ -112,7 +133,7 @@ td,th{border-bottom:1px solid #33465f;text-align:left;padding:12px}
 p{line-height:1.5}.note{color:#b6c7da}</style></head><body>
 <header><h1>QuantScale AI · Research Monitor</h1><small>Read-only diagnostics · no live trading</small></header>
 <main>"""
-    content += cell("Model health", report["status"])
+    content += cell("Model health", report["status"])\n    content += cell("Forward resolved predictions", report["forward_scored"])\n    content += cell("Forward champion Brier", fmt(report["forward_champion_brier"]))\n    content += cell("Forward challenger Brier", fmt(report["forward_challenger_brier"]))\n    content += cell("Automatic promotion", "FROZEN")
     content += cell("Scored predictions", report["scored_predictions"])
     content += cell("Pending predictions", report["pending_predictions"])
     content += cell("Recent Brier loss (lower is better)", fmt(report["recent_brier"]))
