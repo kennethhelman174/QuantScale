@@ -37,5 +37,5 @@ def test_future_candle_not_predicted(tmp_path):
     ingest(db, [candle(0, 100, 101), candle(900, 101, 102)])
     r = process(db, now=900)
     assert r["evaluations"] == 0
-    assert db.execute("SELECT COUNT(*) FROM predictions").fetchone()[0] == 0
+    assert db.execute("SELECT target_ts FROM predictions").fetchall() == [(900,)]
     db.close()
