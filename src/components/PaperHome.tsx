@@ -69,11 +69,11 @@ export function PaperHome({openHistory}:{openHistory:()=>void}){
    <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-3 min-w-0">
     <h2 className="font-semibold">Market observations</h2>
     <p className="text-sm text-slate-300 break-words">Market: {snapshot?.marketTicker??'Unavailable'}</p>
-    <p className="text-sm text-slate-300">CF BRTI observation: {usd(snapshot?.brti.price)} <span className="text-xs text-slate-400">(Python feed)</span></p>
+    <p className="text-sm text-slate-300">CF BRTI observation: {usd(snapshot?.brti?.price)} <span className="text-xs text-slate-400">(Python feed)</span></p>
     <div className="flex flex-wrap gap-x-5 gap-y-2 font-mono text-sm">
-     <span>YES bid: {cents(snapshot?.quote.yesBid)}</span><span>YES ask: {cents(snapshot?.quote.yesAsk)}</span>
+     <span>YES bid: {cents(snapshot?.quote?.yesBid)}</span><span>YES ask: {cents(snapshot?.quote?.yesAsk)}</span>
     </div>
-    <p className="text-xs text-slate-400">Observed top-of-book prices, not a guarantee of execution. Source: {snapshot?.quote.source??'Unavailable'}</p>
+    <p className="text-xs text-slate-400">Observed top-of-book prices, not a guarantee of execution. Source: {snapshot?.quote?.source??'Unavailable'}</p>
    </section>
    <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-2">
     <h2 className="font-semibold">Feed & risk health</h2>
