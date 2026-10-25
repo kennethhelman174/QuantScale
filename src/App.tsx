@@ -121,7 +121,7 @@ export default function App() {
   return (
     <div className={`min-h-screen transition-colors duration-200 ${theme === 'light' ? 'theme-light bg-slate-50 text-slate-900' : 'bg-[#0a0a0c] text-neutral-100'} flex flex-col font-sans selection:bg-cyan-500 selection:text-black ${isKiosk ? 'p-2' : ''}`}>
       {!backendConnected && <div role="alert" className="bg-red-900 p-3 text-white text-center">Backend disconnected — NO trading will run locally.</div>}
-      {backendConnected && <div role="status" className="bg-amber-950 text-amber-100 p-3 text-center text-sm font-semibold">
+      {backendConnected && <div role="status" className="bg-slate-950 text-slate-400 px-3 py-2 text-center text-xs">
         QuantScale direct order routing OFF · Its own Kalshi feed: {exchangeState?.marketState ?? 'CHECKING'} · Book: {exchangeState?.quoteState ?? 'CHECKING'} · Reference: {exchangeState?.referenceVerified ? 'verified' : 'not verified'} · Python PAPER simulation is monitored separately below
         {exchangeState?.nextOpen && <span className="block text-xs mt-1 font-normal">Next listed opening: {new Date(exchangeState.nextOpen).toLocaleString()} (local time; not a guarantee of active trading)</span>}
       </div>}
