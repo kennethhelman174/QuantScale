@@ -308,6 +308,7 @@ async function startServer() {
         connected:true,readOnly:true,walletsSeparate:true,paperOnly:source.paper_only===true,
         executionId:source.execution_id,asOf:number(source.server_time),
         marketTicker:label(market.ticker),strategy:label(source.strategy),paused:source.paused===true,
+        brti:{price:number(brtiRef.price),ageSeconds:number(brtiRef.ageSeconds),status:label(brtiRef.status)},
         quote:{yesBid:feed.quote_fresh===true?number(marketQuote.yes_bid):null,
           yesAsk:feed.quote_fresh===true?number(marketQuote.yes_ask):null,
           bidSize:feed.quote_fresh===true?number(marketQuote.bid_size):null,
