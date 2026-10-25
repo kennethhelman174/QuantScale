@@ -73,9 +73,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   ];
 
   return (
-    <header className="sticky top-0 z-50 flex items-center justify-between gap-8 px-6 py-3.5 bg-neutral-950/95 backdrop-blur-md border-b border-neutral-800">
+    <header className="sticky top-0 z-50 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 sm:px-5 py-2.5 w-full min-w-0 bg-neutral-950/95 backdrop-blur-md border-b border-neutral-800">
       {/* Zone 1: Brand Wordmark & 1H BTC Sparkline */}
-      <div className="flex items-center gap-3 shrink-0">
+      <div className="flex items-center gap-2 min-w-0 max-w-full flex-wrap">
         <a
           href="#overview"
           onClick={(e) => {
@@ -113,14 +113,14 @@ export const Navbar: React.FC<NavbarProps> = ({
       </div>
 
       {/* Zone 2: Navigation Links (single-line, concise) */}
-      <nav className="hidden lg:flex items-center gap-6 text-sm font-medium text-neutral-400">
+      <nav className="order-3 w-full min-w-0 flex flex-wrap items-center justify-start gap-x-3 gap-y-2 text-sm font-medium text-neutral-400 border-t border-neutral-800/70 pt-2" aria-label="Main navigation">
         {navItems.map((item) => {
           const isActive = activeTab === item.id;
           return (
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className={`hover:text-white transition-colors whitespace-nowrap shrink-0 relative py-1 text-xs tracking-wide uppercase ${
+              className={`hover:text-white transition-colors whitespace-nowrap relative py-1 text-xs tracking-wide uppercase ${
                 isActive ? 'text-cyan-400 font-semibold' : 'text-neutral-400'
               }`}
             >
@@ -134,7 +134,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       </nav>
 
       {/* Zone 3: Primary Action & Safeguard Trigger */}
-      <div className="flex items-center gap-3 shrink-0">
+      <div className="flex flex-wrap items-center justify-end gap-2 min-w-0 max-w-full">
         {/* Kiosk Mode Toggle */}
         <button
           onClick={onToggleKiosk}
