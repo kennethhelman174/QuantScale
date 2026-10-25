@@ -29,9 +29,9 @@ export function PythonPaperStatus() {
     Python research/paper engine (separate wallet, read-only):
     {' '}{current ? 'Connected' : 'Offline or stale'}
     {current && <span>
-      {' | '}Market: {current.ticker ?? 'Unavailable'}
-      {' | '}BRTI: {current.brti.price ?? 'Unavailable'}
-      {' | '}Paper equity: {current.paper.equity ?? 'Unavailable'}
+      {current.ticker ? ' | Market: '+current.ticker : ''}
+      {' | '}BRTI: {typeof current.brti.price==='number'?current.brti.price.toLocaleString('en-US',{style:'currency',currency:'USD'}):'Unavailable'}
+      {' | '}Paper equity: {typeof current.paper.equity==='number'?current.paper.equity.toLocaleString('en-US',{style:'currency',currency:'USD'}):'Unavailable'}
     </span>}
   </div>;
 }
