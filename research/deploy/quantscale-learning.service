@@ -1,0 +1,9 @@
+[Unit]
+Description=QuantScale BTC incremental research learner (no trading)
+Wants=network-online.target
+After=network-online.target
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/quantscale-research/current/research
+ExecStart=/opt/quantscale-research/current/venv/bin/python -m quantscale.online --db %h/quantscale-data/online.sqlite3 --days 7
+TimeoutStartSec=300
