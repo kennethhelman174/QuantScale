@@ -94,6 +94,7 @@ def run(source_db, lab_db, now=None):
         weight_map = {name: json.loads(raw) for name, raw in db.execute("SELECT model,value FROM weights")}
         scored = 0
         forward_emitted = 0
+        by_ts = {r[0]: r for r in rows}
         with db:
             for prev, candle in zip(rows, rows[1:]):
                 if candle[0] - prev[0] != STEP:
@@ -108,9 +109,11 @@ def run(source_db, lab_db, now=None):
                     db.execute("UPDATE forecasts SET outcome=? WHERE target_ts=? AND model=? AND outcome IS NULL",
                                (y, ts, name))
                     scored += 1
-                    # Keep comparison models frozen in this v0.5 baseline.
-                    # Online training will be enabled once valid delayed-label
-                    # update and rollback controls are tested.
+                    earlier = by_ts.get(source_ts - STEP)
+                    source = by_ts.get(source_ts)
+                    if earlier is not None and source is not None:
+                        weight_map[name] = learn(name, weight_map[name],
+                                                 features(earlier, source), y)
                 # Next forecast uses only the completed current candle and preceding candle.
                 target = ts + STEP
                 x = features(prev, candle)
@@ -124,10 +127,7 @@ def run(source_db, lab_db, now=None):
                                (target, name, ts, p, origin, None if historical else now))
                     if not historical:
                         forward_emitted += 1
-                # When a backfill target was already completed, scoring occurs
-                # at the following chronological iteration, never before emission.
-                # Online weights learn from resolved next-candle labels below.
-             # v0.5 records forecasts first; no automated model updates.
+                # Later chronological iteration scores the target.\n           # Persist bounded per-model weights after delayed label updates.
             for name, weights in weight_map.items():
                 db.execute("UPDATE weights SET value=? WHERE model=?", (json.dumps(weights), name))
         metrics = {}
