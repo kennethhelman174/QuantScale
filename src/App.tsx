@@ -164,7 +164,8 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6">
-        {activeTab === 'overview' && (
+        {activeTab === 'overview' && !verifiedMarket && (<section role="status" className="rounded-xl border border-amber-800 bg-amber-950/30 p-5 space-y-2"><h2 className="font-bold text-amber-200">QuantScale paper execution not ready</h2><p className="text-sm text-neutral-300">The legacy fixed-strike chart and simulated order book are hidden because no verified tradable order book is connected. The Python paper engine is independently running and can be monitored in its own dashboard. QuantScale automated order routing remains locked.</p><p className="text-xs text-neutral-400">Check /api/paper/readiness for outstanding verification requirements. No live or paper trading is activated by this view.</p></section>)}
+        {activeTab === 'overview' && verifiedMarket && (
           <OverviewTab
             market={tradingEngine.currentMarket}
             book={tradingEngine.currentBook}
