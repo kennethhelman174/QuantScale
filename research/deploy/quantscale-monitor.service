@@ -1,0 +1,6 @@
+[Unit]
+Description=QuantScale read-only learning dashboard generation
+After=quantscale-learning.service
+[Service]
+Type=oneshot
+ExecStart=/opt/quantscale-research/current/venv/bin/python -m quantscale.monitor --db %h/quantscale-data/online.sqlite3 --html %h/quantscale-data/dashboard.html

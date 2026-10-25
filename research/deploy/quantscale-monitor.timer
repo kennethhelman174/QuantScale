@@ -1,0 +1,9 @@
+[Unit]
+Description=Refresh QuantScale research model dashboard
+[Timer]
+OnBootSec=4min
+OnUnitInactiveSec=5min
+RandomizedDelaySec=20s
+Persistent=true
+[Install]
+WantedBy=timers.target
