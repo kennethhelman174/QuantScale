@@ -18,9 +18,9 @@ cat > "$HOME/.config/systemd/user/quantscale-research-update.timer" <<'EOF'
 Description=Hourly QuantScale research update check
 [Timer]
 OnBootSec=5min
-OnUnitInactiveSec=1h
+OnUnitInactiveSec=5min
 Persistent=true
-RandomizedDelaySec=5min
+RandomizedDelaySec=30s
 [Install]
 WantedBy=timers.target
 EOF
