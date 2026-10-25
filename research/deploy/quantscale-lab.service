@@ -1,0 +1,7 @@
+[Unit]
+Description=QuantScale research-only multi-model laboratory
+After=quantscale-learning.service
+[Service]
+Type=oneshot
+ExecStart=/opt/quantscale-research/current/venv/bin/python -m quantscale.laboratory
+TimeoutStartSec=120
