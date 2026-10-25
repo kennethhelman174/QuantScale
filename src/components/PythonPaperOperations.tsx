@@ -4,6 +4,7 @@ type Num = number | null;
 type Trade = {id:Num;ts:Num;ticker:string|null;strategy:string|null;side:string|null;qty:Num;entry:Num;exit:Num;net:Num;fees:Num;reason:string|null};
 type Operations = {
  connected:boolean;readOnly:boolean;paperOnly:boolean;executionId:string;
+ reconciliation?:{status:string;scope:string;checks:{id:string;status:string;detail:string;differenceUsd?:number}[]};
  marketTicker:string|null;strategy:string|null;
  feed:{status:string|null;heartbeatAge:Num;quoteAge:Num;quoteFresh:boolean;heartbeatFresh:boolean};
  wallet:{initial:Num;cash:Num;equity:Num;totalPnl:Num;unrealizedNet:Num;dailyPnl:Num;dailyHalt:boolean;drawdownHalt:boolean};
@@ -40,6 +41,14 @@ export function PythonPaperOperations(){
     <p role="status" className="mt-2 text-sm">{data?'Connected to Python paper ledger':error}</p>
    </div>
    {data && <>
+    <div className="rounded-xl border border-slate-700 bg-slate-900 p-4 space-y-2">
+      <h3 className="font-semibold">Paper Accounting Consistency: {data.reconciliation?.status ?? 'UNAVAILABLE'}</h3>
+      <p className="text-xs text-slate-400">{data.reconciliation?.scope ?? 'No reconciliation information provided'}</p>
+      {data.reconciliation?.checks.map(c=><p key={c.id} className="text-xs">
+        <span className={c.status==='PASS'?'text-emerald-400':'text-amber-300'}>{c.status}</span>
+        {' · '}{c.detail}{typeof c.differenceUsd==='number'?' · Difference: '+money(c.differenceUsd):''}
+      </p>)}
+    </div>
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
       {[['Paper Equity',money(data.wallet.equity)],['Cash',money(data.wallet.cash)],['Net P&L',money(data.wallet.totalPnl)],['Closed Trades',num(data.totals.closedTrades)],
         ['Realized Net',money(data.totals.realizedNet)],['Closed Fees',money(data.totals.closedFees)],['Open Positions',num(data.positions.length)],['Market',data.marketTicker??'Unavailable']].map(([name,value])=>
