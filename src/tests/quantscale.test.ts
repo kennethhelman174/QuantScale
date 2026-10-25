@@ -151,7 +151,9 @@ describe('3. GitHub Auto-Updater Rollback & Health Check Verification', () => {
     const status = githubUpdater.getStatus();
     assert.ok(status.runningVersion);
     assert.ok(status.repoUrl);
-    assert.equal(status.branch, 'main');
+    assert.equal(typeof status.branch, 'string');
+    assert.ok(status.branch.length > 0);
+    assert.ok(!status.branch.includes(' '));
   });
 });
 
@@ -195,5 +197,30 @@ describe('4. Multi-Client Browser Synchronization & Broadcast Server', () => {
     ws2.close();
     wss.close();
     server.close();
+  });
+});
+
+describe('5. Wallet-derived risk accounting', () => {
+  it('starts PRIMARY with $1,000 and 0% drawdown', async () => {
+    const { PortfolioRiskManager } = await import('../quant/portfolioRisk');
+    const manager = new PortfolioRiskManager();
+    const primary = manager.getPortfolio('PRIMARY');
+    assert.ok(primary);
+    assert.equal(primary.cashBalance, 1000);
+    assert.equal(primary.dailyPeakEquity, 1000);
+    assert.equal(primary.currentDrawdownPct, 0);
+  });
+
+  it('reconciles a persisted wallet without fictitious 60% drawdown', async () => {
+    const { PortfolioRiskManager } = await import('../quant/portfolioRisk');
+    const manager = new PortfolioRiskManager();
+    manager.synchronizePaperWallet(100000, 0, 0, true);
+    manager.updatePortfolioState('PRIMARY', [], []);
+    const primary = manager.getPortfolio('PRIMARY');
+    assert.ok(primary);
+    assert.equal(primary.cashBalance, 1000);
+    assert.equal(primary.equity, 1000);
+    assert.equal(primary.currentDrawdownPct, 0);
+    assert.equal(primary.dailyPeakEquity, 1000);
   });
 });

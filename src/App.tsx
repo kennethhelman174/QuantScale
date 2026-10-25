@@ -9,7 +9,7 @@ import React, { useState, useEffect, useSyncExternalStore } from 'react';
 import { tradingEngine } from './services/tradingEngine';
 import { Position } from './types/market';
 import { Navbar } from './components/Navbar';
-import { OverviewTab } from './components/OverviewTab';
+import { PaperHome } from './components/PaperHome';
 import { PositionsTab } from './components/PositionsTab';
 import { StrategiesTab } from './components/StrategiesTab';
 import { ResearchTab } from './components/ResearchTab';
@@ -23,6 +23,8 @@ import { KalshiSetupWizard } from './components/KalshiSetupWizard';
 import { PaperWalletTab } from './components/PaperWalletTab';
 import { KalshiApiCredentials } from './services/kalshiClient';
 import { Footer } from './components/Footer';
+import { PythonPaperStatus } from './components/PythonPaperStatus';
+import { PythonPaperOperations } from './components/PythonPaperOperations';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -40,6 +42,10 @@ export default function App() {
     localStorage.setItem('quantscale_theme', nextTheme);
   };
 
+  const [backendConnected, setBackendConnected] = useState(false);
+  const [backendRunning, setBackendRunning] = useState(false);
+  const [exchangeState, setExchangeState] = useState<{marketState:string;quoteState:string;nextOpen:string|null;referenceVerified:boolean}|null>(null);
+  const controlsUnavailable = () => alert('Only authenticated backend trading controls are allowed. Browser-local trading is disabled.');
   // Subscribe to real-time central backend engine state changes via WebSocket
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -55,15 +61,33 @@ export default function App() {
 
         socket.onopen = () => {
           isConnectedToServer = true;
+          setBackendConnected(true);
           tradingEngine.logDiagnostic('INFO', 'ORDER_ROUTING', 'Dashboard client synced with central QuantScale backend server.');
         };
 
         socket.onmessage = (event) => {
           try {
             const packet = JSON.parse(event.data);
-            if (packet.type === 'TICK_UPDATE' || packet.type === 'STATE_SNAPSHOT') {
-              if (packet.spotPrice) tradingEngine.currentSpotPrice = packet.spotPrice;
+            if (packet.type === 'TICK_UPDATE' || packet.type === 'STATE_SNAPSHOT' || packet.type === 'KALSHI_OBSERVATION') {
+              if (packet.feed) {
+                const feed = packet.feed;
+                setExchangeState({
+                  marketState:feed.marketState||'UNAVAILABLE',
+                  quoteState:feed.quoteState||'UNAVAILABLE',
+                  nextOpen:feed.discovery?.nextScheduledOpen||null,
+                  referenceVerified:feed.referencePriceVerified===true
+                });
+              }
+              if (Number.isFinite(packet.spotPrice)) tradingEngine.currentSpotPrice = packet.spotPrice;
+              if (packet.market) tradingEngine.currentMarket = packet.market;
+              if (packet.book) tradingEngine.currentBook = packet.book;
+              if (Array.isArray(packet.candles)) tradingEngine.candles = packet.candles;
+              if (Array.isArray(packet.spotHistory)) tradingEngine.spotHistory = packet.spotHistory;
+              if (Array.isArray(packet.riskPortfolios)) tradingEngine.riskManager.hydratePortfolios(packet.riskPortfolios);
+              setBackendRunning(true);
               if (packet.mode) tradingEngine.mode = packet.mode;
+              if (typeof packet.isAutoTrading === 'boolean') tradingEngine.isAutoTrading = packet.isAutoTrading;
+              if (packet.autoTradingMode) tradingEngine.autoTradingMode = packet.autoTradingMode;
               if (packet.positions) tradingEngine.positions = packet.positions;
               if (packet.orders) tradingEngine.orders = packet.orders;
               setTick((t) => t + 1);
@@ -73,16 +97,9 @@ export default function App() {
           }
         };
 
-        socket.onerror = () => {
-          if (!isConnectedToServer) {
-            tradingEngine.start();
-          }
-        };
-      } catch {
-        tradingEngine.start();
-      }
-    } else {
-      tradingEngine.start();
+        socket.onclose = () => { setBackendConnected(false); setBackendRunning(false); };
+        socket.onerror = () => { setBackendConnected(false); setBackendRunning(false); };
+      } catch { setBackendConnected(false); }
     }
 
     const unsubscribe = tradingEngine.subscribe(() => {
@@ -95,68 +112,34 @@ export default function App() {
     };
   }, []);
 
-  const primaryRisk = tradingEngine.riskManager.getPortfolio('PRIMARY')!;
   const allPortfolios = tradingEngine.riskManager.getAllPortfolios();
 
-  const handleManualOrder = (side: 'YES' | 'NO', price: number, contracts: number) => {
-    const action = side === 'YES' ? 'ENTER_YES' : 'ENTER_NO';
-    tradingEngine['submitStrategyOrder']('PRIMARY', {
-      strategyId: 'BTC-LEADLAG-SCALP',
-      timestamp: Date.now(),
-      marketTicker: tradingEngine.currentMarket.ticker,
-      action,
-      suggestedPrice: price,
-      suggestedQuantity: contracts,
-      theoreticalProbability: price / 100,
-      marketProbability: price / 100,
-      edgeCents: 1.5,
-      expectedNetValue: 0.15,
-      uncertaintyEstimate: 0.05,
-      rationale: `Manual simulator ticket: Buy ${side} @ ${price}¢ (${contracts} contracts)`,
-    });
-  };
-
-  const handleClosePosition = (pos: Position) => {
-    const exitPrice =
-      pos.side === 'YES'
-        ? tradingEngine.currentBook.yesBids[0]?.price || pos.entryPrice
-        : tradingEngine.currentBook.noBids[0]?.price || (100 - pos.entryPrice);
-    tradingEngine.closePosition(pos, exitPrice, 'Manual User Close', Date.now());
-  };
-
-  const handleCancelOrder = (orderId: string) => {
-    const ord = tradingEngine.orders.find((o) => o.id === orderId);
-    if (ord) {
-      ord.state = 'CANCELED';
-      ord.canceledAt = Date.now();
-      tradingEngine.logDiagnostic('INFO', 'ORDER_ROUTING', `Canceled order #${orderId}`);
-    }
-  };
-
-  const handleToggleEngine = () => {
-    if (tradingEngine.getIsRunning()) {
-      tradingEngine.stop();
-    } else {
-      tradingEngine.start();
-    }
-  };
+  const handleClosePosition = (_pos: Position) => controlsUnavailable();
+  const handleCancelOrder = (_orderId: string) => controlsUnavailable();
+  const handleToggleEngine = () => controlsUnavailable();
 
   return (
     <div className={`min-h-screen transition-colors duration-200 ${theme === 'light' ? 'theme-light bg-slate-50 text-slate-900' : 'bg-[#0a0a0c] text-neutral-100'} flex flex-col font-sans selection:bg-cyan-500 selection:text-black ${isKiosk ? 'p-2' : ''}`}>
+      {!backendConnected && <div role="alert" className="bg-red-900 p-3 text-white text-center">Backend disconnected — NO trading will run locally.</div>}
+      {backendConnected && <div role="status" className="bg-slate-950 text-slate-400 px-3 py-2 text-center text-xs">
+        QuantScale direct order routing OFF · Its own Kalshi feed: {exchangeState?.marketState ?? 'CHECKING'} · Book: {exchangeState?.quoteState ?? 'CHECKING'} · Reference: {exchangeState?.referenceVerified ? 'verified' : 'not verified'} · Python PAPER simulation is monitored separately below
+        {exchangeState?.nextOpen && <span className="block text-xs mt-1 font-normal">Next listed opening: {new Date(exchangeState.nextOpen).toLocaleString()} (local time; not a guarantee of active trading)</span>}
+      </div>}
+      <PythonPaperStatus />
       {/* Top Bar Navigation */}
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         mode={tradingEngine.mode}
-        isRunning={tradingEngine.getIsRunning()}
+        isRunning={backendRunning}
         onToggleEngine={handleToggleEngine}
         isAutoTrading={tradingEngine.isAutoTrading}
-        onToggleAutoTrading={() => tradingEngine.toggleAutoTrading()}
+        onToggleAutoTrading={controlsUnavailable}
         onOpenSafeguards={(tab = 'safeguards') => {
           setSafeguardsTab(tab);
           setIsSafeguardsOpen(true);
         }}
-        onOpenSetupWizard={() => setIsSetupWizardOpen(true)}
+        onOpenSetupWizard={controlsUnavailable}
         isKiosk={isKiosk}
         onToggleKiosk={() => setIsKiosk(!isKiosk)}
         theme={theme}
@@ -175,25 +158,9 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6">
-        {activeTab === 'overview' && (
-          <OverviewTab
-            market={tradingEngine.currentMarket}
-            book={tradingEngine.currentBook}
-            spotPrice={tradingEngine.currentSpotPrice}
-            candles={tradingEngine.candles}
-            positions={tradingEngine.positions}
-            riskState={primaryRisk}
-            decisions={tradingEngine.decisionsLog}
-            onManualOrder={handleManualOrder}
-            isAutoTrading={tradingEngine.isAutoTrading}
-            onToggleAutoTrading={() => tradingEngine.toggleAutoTrading()}
-            autoTradingMode={tradingEngine.autoTradingMode}
-            onSetAutoTradingMode={(m) => tradingEngine.setAutoTradingMode(m)}
-            autoTradeCount={tradingEngine.autoTradeCount}
-            lastAutoTradeSummary={tradingEngine.lastAutoTradeSummary}
-            onTriggerAutoTrade={() => tradingEngine.triggerAutonomousTrade()}
-          />
-        )}
+        {activeTab === 'overview' && <PaperHome openHistory={() => setActiveTab('python-paper')} />}
+
+        {activeTab === 'python-paper' && <PythonPaperOperations />}
 
         {activeTab === 'positions' && (
           <PositionsTab
@@ -207,12 +174,12 @@ export default function App() {
         {activeTab === 'strategies' && (
           <StrategiesTab
             decisionVolMetric={tradingEngine.decisionVolMetric}
-            onSetDecisionVolMetric={(m) => tradingEngine.setDecisionVolMetric(m)}
+            onSetDecisionVolMetric={controlsUnavailable}
             spotHistory={tradingEngine.spotHistory}
             candles={tradingEngine.candles}
             currentSpotPrice={tradingEngine.currentSpotPrice}
             autoTradingMode={tradingEngine.autoTradingMode}
-            onSetAutoTradingMode={(m) => tradingEngine.setAutoTradingMode(m)}
+            onSetAutoTradingMode={controlsUnavailable}
           />
         )}
 
@@ -249,40 +216,13 @@ export default function App() {
         currentMode={tradingEngine.mode}
         isPaused={tradingEngine.riskManager.isPaused()}
         riskLimits={tradingEngine.riskManager.getLimits()}
-        onTogglePause={() => {
-          tradingEngine.riskManager.setEmergencyPause(!tradingEngine.riskManager.isPaused());
-        }}
-        onCancelAllOrders={() => tradingEngine.manualCancelAllOrders('PRIMARY')}
-        onFlattenPositions={() => tradingEngine.manualFlattenPositions('PRIMARY')}
-        onSetExecutionMode={(m) => {
-          tradingEngine.mode = m;
-          tradingEngine.logDiagnostic('WARN', 'ORDER_ROUTING', `Execution environment switched to [${m}]`);
-        }}
-        onUpdateRiskLimits={(limits) => {
-          tradingEngine.riskManager.updateLimits(limits);
-          tradingEngine.logDiagnostic('INFO', 'RISK_GATE', 'Updated portfolio financial limits');
-        }}
+        onTogglePause={controlsUnavailable}
+        onCancelAllOrders={controlsUnavailable}
+        onFlattenPositions={controlsUnavailable}
+        onSetExecutionMode={controlsUnavailable}
+        onUpdateRiskLimits={controlsUnavailable}
       />
 
-      {/* Kalshi API Setup Wizard Modal */}
-      <KalshiSetupWizard
-        isOpen={isSetupWizardOpen}
-        onClose={() => setIsSetupWizardOpen(false)}
-        currentCredentials={tradingEngine.dataCollector.getCredentials()}
-        onSaveCredentials={async (creds: KalshiApiCredentials) => {
-          tradingEngine.dataCollector.setCredentials(creds);
-          if (creds.environment !== 'PAPER') {
-            tradingEngine.mode = creds.environment === 'LIVE' ? 'LIVE' : 'DEMO';
-          }
-          const res = await tradingEngine.dataCollector.testConnectivity();
-          tradingEngine.logDiagnostic(
-            res.isSuccess ? 'INFO' : 'WARN',
-            'MARKET_DATA',
-            `API Setup Wizard tested credentials against Kalshi gateway: ${res.message}`
-          );
-          return res;
-        }}
-      />
     </div>
   );
 }

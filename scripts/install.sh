@@ -1,57 +1,44 @@
 #!/usr/bin/env bash
-# QuantScale Raspberry Pi 4 ARM64 Production Installer Script
-
-set -e
-
-echo "=== QuantScale Raspberry Pi 4 Production Installer ==="
-
-CURRENT_USER=$(whoami)
-
-# 1. Update system packages
-echo "[1/6] Updating system package list..."
-sudo apt-get update -y
-sudo apt-get install -y curl git nginx sqlite3 ufw
-
-# 2. Install Tailscale via official repository script if missing
-if ! command -v tailscale &> /dev/null; then
-  echo "[2/6] Installing Tailscale for secure remote VPN access..."
-  curl -fsSL https://tailscale.com/install.sh | sh || echo "Warning: Tailscale installation skipped. Install manually if remote VPN access is needed."
-else
-  echo "[2/6] Tailscale is already installed."
+# Install from a git clone using: bash scripts/install.sh
+set -Eeuo pipefail
+if [ "$(uname -m)" != "aarch64" ]; then
+  echo "This installer requires 64-bit Raspberry Pi OS (aarch64)." >&2
+  exit 1
 fi
-
-# 3. Check or install Node.js 22
-if ! command -v node &> /dev/null || [[ $(node -v) != v22* ]]; then
-  echo "[3/6] Installing Node.js 22 LTS for ARM64..."
-  curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+SRC="$(cd "$(dirname "$0")/.." && pwd -P)"
+echo "Installing QuantScale from $SRC"
+sudo apt-get update
+sudo apt-get install -y curl git nginx sqlite3 openssl rsync
+if ! command -v node >/dev/null || ! node -e 'process.exit(Number(process.versions.node.split(".")[0])===22 && Number(process.versions.node.split(".")[1])>=13 ? 0 : 1)' ; then
+  curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/quantscale-nodesource.sh
+  sudo bash /tmp/quantscale-nodesource.sh
   sudo apt-get install -y nodejs
 fi
-
-echo "Node.js version: $(node -v)"
-echo "NPM version: $(npm -v)"
-
-# 4. Create persistent data directory outside repository and assign ownership
-echo "[4/6] Setting up persistent SQLite database storage..."
-sudo mkdir -p /data/quantscale
-sudo chown -R $CURRENT_USER:$CURRENT_USER /data/quantscale
-sudo chmod -R 755 /data/quantscale
-
-# 5. Install dependencies and build project
-echo "[5/6] Installing npm dependencies and building production assets..."
-npm ci
-npm run build
-
-# 6. Configure Nginx reverse proxy and systemd service
-echo "[6/6] Registering Nginx proxy and systemd service..."
-if [ -d "/etc/nginx/sites-available" ]; then
-  sudo cp scripts/quantscale.nginx.conf /etc/nginx/sites-available/quantscale
-  sudo ln -sf /etc/nginx/sites-available/quantscale /etc/nginx/sites-enabled/default
-  sudo nginx -t && sudo systemctl reload nginx || true
+mkdir -p "$HOME/.local/share/quantscale-app/releases" "$HOME/.local/share/quantscale/data" "$HOME/.config/quantscale" "$HOME/.config/systemd/user"
+chmod 700 "$HOME/.config/quantscale" "$HOME/.local/share/quantscale/data"
+printf '%s\n' "$SRC" > "$HOME/.config/quantscale/source_path"
+DEPLOY_BRANCH="$(git -C "$SRC" symbolic-ref --quiet --short HEAD || echo main)"
+printf '%s\n' "$DEPLOY_BRANCH" > "$HOME/.config/quantscale/deploy_branch"
+echo "Tracking origin/$DEPLOY_BRANCH for safe updates."
+if [ ! -e "$HOME/.config/quantscale/environment" ]; then
+  umask 077
+  printf 'NODE_ENV=production\nPORT=3000\nHOST=127.0.0.1\nDATA_DIR=%s\nADMIN_API_KEY=%s\nNODE_OPTIONS=--experimental-sqlite\n' "$HOME/.local/share/quantscale/data" "$(openssl rand -hex 32)" > "$HOME/.config/quantscale/environment"
 fi
-
-sudo cp scripts/quantscale.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable quantscale.service
-
-echo "=== QuantScale Installation Complete ==="
-echo "Run 'bash scripts/start.sh' or 'sudo systemctl start quantscale' to launch."
+chmod 600 "$HOME/.config/quantscale/environment"
+cp "$SRC/scripts/quantscale.service" "$HOME/.config/systemd/user/quantscale.service"
+cp "$SRC/scripts/quantscale-update.service" "$HOME/.config/systemd/user/quantscale-update.service"
+cp "$SRC/scripts/quantscale-update.timer" "$HOME/.config/systemd/user/quantscale-update.timer"
+sudo cp "$SRC/scripts/quantscale.nginx.conf" /etc/nginx/sites-available/quantscale
+sudo ln -sfn /etc/nginx/sites-available/quantscale /etc/nginx/sites-enabled/quantscale
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t
+sudo systemctl enable --now nginx
+sudo systemctl reload nginx
+sudo loginctl enable-linger "$USER"
+systemctl --user daemon-reload
+systemctl --user enable quantscale.service
+bash "$SRC/scripts/update.sh"
+systemctl --user enable --now quantscale-update.timer
+echo "Installation complete. Open http://$(hostname -I | awk '{print $1}') on your LAN."
+echo "Status: systemctl --user status quantscale.service"
+echo "Updater: systemctl --user list-timers"

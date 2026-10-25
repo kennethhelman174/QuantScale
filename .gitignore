@@ -6,3 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
+.engine.lock
+data/
+*.db
+*.db-shm
+*.db-wal

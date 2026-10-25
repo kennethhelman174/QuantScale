@@ -1,0 +1,7 @@
+[Unit]
+Description=Validate and deploy new QuantScale main branch
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash %h/.local/share/quantscale-app/current/scripts/update.sh
+TimeoutStartSec=900

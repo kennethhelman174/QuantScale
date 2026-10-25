@@ -74,6 +74,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 
   return (
     <div className="space-y-6">
+      <div role="alert" className="rounded-lg border border-amber-700 bg-amber-950/50 p-3 text-sm text-amber-100">QuantScale auto-paper orders are locked pending contract and settlement verification. This overview contains legacy illustrative market values; use the Python paper status above for independently labeled live observations.</div>
       {/* 1. Top High-Density Metric Strip */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
         {/* Equity */}
@@ -211,7 +212,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                   isAutoTrading ? 'text-emerald-400' : 'text-neutral-400'
                 }`}
               >
-                {isAutoTrading ? 'LIVE & AUTO-EXECUTING' : 'PAUSED BY OPERATOR'}
+                {isAutoTrading ? 'UNEXPECTED AUTO STATE' : 'EXECUTION LOCKED — RESEARCH ONLY'}
               </span>
             </div>
           </div>
@@ -260,24 +261,24 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 
             {/* Direct Trigger Action for User Testing */}
             <button
-              onClick={onTriggerAutoTrade}
+              disabled aria-disabled="true" onClick={onTriggerAutoTrade}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-cyan-300 bg-cyan-950/60 hover:bg-cyan-900/60 border border-cyan-800/60 rounded transition-colors whitespace-nowrap"
               title="Immediately evaluate current book & execute an automated strategy ticket"
             >
               <Zap className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Trigger Auto-Trade Now</span>
+              <span>Auto Trade Unavailable</span>
             </button>
 
             {/* Toggle Switch */}
             <button
-              onClick={onToggleAutoTrading}
+              disabled aria-disabled="true" onClick={onToggleAutoTrading}
               className={`px-3 py-1.5 text-xs font-semibold rounded border transition-colors whitespace-nowrap ${
                 isAutoTrading
                   ? 'text-neutral-300 bg-neutral-800 border-neutral-700 hover:bg-neutral-700'
                   : 'text-emerald-300 bg-emerald-950/80 border-emerald-700 hover:bg-emerald-900/80'
               }`}
             >
-              {isAutoTrading ? 'Pause Bot' : 'Resume Bot'}
+              {'Auto Trading Locked'}
             </button>
           </div>
         </div>
@@ -314,13 +315,13 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
         </div>
         <div className="flex items-center gap-4 text-xs">
           <div className="flex items-center gap-1.5 text-neutral-400">
-            <span>Strike:</span>
+            <span>{market.contractType === 'INDEX_DIRECTION_15M' ? 'Contract:' : 'Strike:'}</span>
             <span className="font-mono text-amber-400 font-semibold">
-              ${market.strikePrice.toLocaleString()}
+              {market.contractType === 'INDEX_DIRECTION_15M' ? 'CF BRTI up/down' : `${market.strikePrice.toLocaleString()}`}
             </span>
           </div>
           <span className="text-neutral-700">·</span>
-          <div className="flex items-center gap-1.5 text-neutral-400">
+          {market.contractType !== 'INDEX_DIRECTION_15M' && <div className="flex items-center gap-1.5 text-neutral-400">
             <span>Distance to Strike:</span>
             <span
               className={`font-mono font-semibold ${
@@ -330,7 +331,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               {spotPrice >= market.strikePrice ? '+' : ''}
               {(spotPrice - market.strikePrice).toFixed(1)} USD
             </span>
-          </div>
+          </div>}
           <span className="text-neutral-700">·</span>
           <div className="flex items-center gap-1.5 text-neutral-400">
             <span>Time Left:</span>

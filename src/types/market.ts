@@ -50,7 +50,7 @@ export interface KalshiOrderBook {
   isCrossed: boolean;
   isEmpty: boolean;
   isStale: boolean;
-  source: 'KALSHI_WS' | 'SIMULATOR';
+  source: 'KALSHI_WS' | 'KALSHI_REST' | 'SIMULATOR';
 }
 
 export interface BTCSpotObservation {
@@ -69,7 +69,12 @@ export interface BTCSpotObservation {
 export interface Kalshi15MMarket {
   ticker: string; // e.g. "KXBTC15M-26OCT23-68500"
   title: string;
-  strikePrice: number; // USD
+  /** KXBTC15M is an index change contract, not a fixed-strike binary. */
+  contractType?: 'INDEX_DIRECTION_15M' | 'FIXED_STRIKE';
+  referenceSource?: string;
+  referencePriceVerified?: boolean;
+  rulesPrimary?: string;
+  strikePrice: number; // USD; zero is an explicit unavailable sentinel for index direction
   openTimestamp: number;
   closeTimestamp: number; // Expiration
   settlementTimerSec: number;

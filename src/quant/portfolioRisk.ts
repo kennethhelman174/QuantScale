@@ -78,14 +78,14 @@ export class PortfolioRiskManager {
       portfolioId: 'PRIMARY',
       name: 'Primary Trading Portfolio',
       isPrimary: true,
-      cashBalance: 2500.0,
-      equity: 2500.0,
+      cashBalance: 1000.0,
+      equity: 1000.0,
       reservedCapital: 0.0,
-      usableHeadroom: 2500.0,
+      usableHeadroom: 1000.0,
       netDirectionalDelta: 0,
       grossExposure: 0.0,
       dailyRealizedPnl: 0.0,
-      dailyPeakEquity: 2500.0,
+      dailyPeakEquity: 1000.0,
       currentDrawdownPct: 0.0,
       riskBudgetRemaining: initialLimits.maxDailyLoss,
       openPositionsCount: 0,
@@ -145,6 +145,31 @@ export class PortfolioRiskManager {
       riskBudgetRemaining: 50.0,
       openPositionsCount: 0,
       openOrdersCount: 0,
+    });
+  }
+
+  public hydratePortfolios(rows: PortfolioRiskState[]): void {
+    for (const row of rows) if (row && row.portfolioId) this.portfolios.set(row.portfolioId, row);
+  }
+
+  /** Synchronize the PRIMARY risk baseline from the authoritative server ledger. */
+  public synchronizePaperWallet(balanceCents: number, reservedCents: number, realizedPnlCents: number, resetPeak = false): void {
+    if (![balanceCents, reservedCents, realizedPnlCents].every(Number.isSafeInteger) ||
+        balanceCents < 0 || reservedCents < 0) throw new Error('Invalid persisted paper wallet amounts');
+    const primary = this.portfolios.get('PRIMARY');
+    if (!primary) throw new Error('PRIMARY portfolio missing');
+    const equity = (balanceCents + reservedCents) / 100;
+    const peak = resetPeak || primary.dailyPeakEquity > equity * 1.5
+      ? equity : Math.max(primary.dailyPeakEquity, equity);
+    this.portfolios.set('PRIMARY', {
+      ...primary,
+      cashBalance: balanceCents / 100,
+      equity,
+      usableHeadroom: Math.max(0, (balanceCents - reservedCents) / 100),
+      reservedCapital: reservedCents / 100,
+      dailyPeakEquity: peak,
+      currentDrawdownPct: peak > 0 ? Math.round(1000 * (peak - equity) / peak) / 10 : 0,
+      dailyRealizedPnl: realizedPnlCents / 100,
     });
   }
 

@@ -27,8 +27,42 @@ jobs:
       - name: Run TypeScript Strict Typecheck
         run: npm run lint
 
+      - name: Run automated tests
+        run: npm test
+
       - name: Build Production Bundle
         run: npm run build
+
+      - name: Validate Pi setup scripts
+        run: bash -n scripts/*.sh
+
+      - name: Start real backend and verify safe PAPER status
+        run: |
+          set -euo pipefail
+          export NODE_ENV=production HOST=127.0.0.1 PORT=3000
+          export DATA_DIR="$RUNNER_TEMP/quantscale-smoke"
+          export NODE_OPTIONS=--experimental-sqlite
+          export ADMIN_API_KEY="test-only-nonprod-$(printf 'x%.0s' {1..40})"
+          mkdir -p "$DATA_DIR"
+          ./node_modules/.bin/tsx server.ts > "$RUNNER_TEMP/quantscale-smoke.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          READY=0
+          for i in $(seq 1 30); do
+            if curl -fsS --max-time 1 http://127.0.0.1:3000/api/health > "$RUNNER_TEMP/health.json"; then
+              READY=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$READY" -ne 1 ]; then cat "$RUNNER_TEMP/quantscale-smoke.log"; exit 1; fi
+          node -e 'const x=require(process.argv[1]); if(x.status!=="ok"||x.mode!=="PAPER"||x.marketReady!==false)process.exit(1)' "$RUNNER_TEMP/health.json"
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{"mode":"LIVE"}' http://127.0.0.1:3000/api/mode)
+          test "$CODE" = "401"
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "X-API-KEY: $ADMIN_API_KEY" -H 'Content-Type: application/json' -d '{"mode":"LIVE"}' http://127.0.0.1:3000/api/mode)
+          test "$CODE" = "403"
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "X-API-KEY: $ADMIN_API_KEY" -H 'Content-Type: application/json' -d '{"command":"resume"}' http://127.0.0.1:3000/api/paper/control)
+          test "$CODE" = "409"
 
       - name: Verify No Uncommitted Credential Leaks
         run: |
@@ -52,9 +86,11 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install & Build
+      - name: Install, Verify & Build
         run: |
           npm ci
+          npm run lint
+          npm test
           npm run build
 
       - name: Package Raspberry Pi Release Archive

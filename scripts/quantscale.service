@@ -1,22 +1,17 @@
 [Unit]
-Description=QuantScale 24/7 Bitcoin Prediction Market Execution Engine
-After=network.target
+Description=QuantScale PAPER backend (user service)
+After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=pi
-Group=pi
-WorkingDirectory=/opt/quantscale
+WorkingDirectory=%h/.local/share/quantscale-app/current
+EnvironmentFile=%h/.config/quantscale/environment
 ExecStart=/usr/bin/npm start
-Restart=always
-RestartSec=5s
-Environment=NODE_ENV=production
-Environment=PORT=3000
-Environment=DATA_DIR=/data/quantscale
-StandardOutput=append:/var/log/quantscale.log
-StandardError=append:/var/log/quantscale.error.log
-LimitNOFILE=65536
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+NoNewPrivileges=true
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target

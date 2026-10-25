@@ -85,15 +85,13 @@ export class KalshiMarketDataCollector {
 
     // If PAPER mode, run simulated verified connectivity test
     if (this.credentials.environment === 'PAPER') {
-      await new Promise((res) => setTimeout(res, 85));
-      const latencyMs = Date.now() - startTime;
       return {
-        isSuccess: true,
-        status: 'ONLINE',
-        latencyMs,
+        isSuccess: false,
+        status: 'OFFLINE',
+        latencyMs: 0,
         exchangeTime: new Date().toISOString(),
-        tradingActive: true,
-        message: 'Verified read-only connectivity to Kalshi simulated gateway.',
+        tradingActive: false,
+        message: 'PAPER mode needs real authenticated Kalshi market data. A simulator is not exchange connectivity.',
       };
     }
 
