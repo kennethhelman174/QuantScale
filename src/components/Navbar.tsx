@@ -6,7 +6,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { ExecutionMode } from '../types/market';
-import { ShieldAlert, Play, Pause, Bell, Sun, Moon } from 'lucide-react';
+import { ShieldAlert, Bell, Sun, Moon } from 'lucide-react';
 import { alertManager } from '../services/alertManager';
 import { BtcSparkline } from './BtcSparkline';
 
@@ -32,12 +32,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   setActiveTab,
   mode,
-  isRunning,
-  onToggleEngine,
-  isAutoTrading,
-  onToggleAutoTrading,
   onOpenSafeguards,
-  onOpenSetupWizard,
   isKiosk,
   onToggleKiosk,
   theme = 'dark',
@@ -61,10 +56,10 @@ export const Navbar: React.FC<NavbarProps> = ({
     return alertManager.subscribe(syncAlerts);
   }, []);
   const navItems = [
-    { id: 'overview', label: 'Overview' },
+    { id: 'overview', label: 'Paper Overview' },
     { id: 'positions', label: 'Positions' },
     { id: 'wallet', label: 'Paper Wallet' },
-    { id: 'python-paper', label: 'Python Paper Ops' },
+    { id: 'python-paper', label: 'Paper Trade Details' },
     { id: 'strategies', label: 'Strategies' },
     { id: 'research', label: 'Research' },
     { id: 'portfolios', label: 'Portfolios' },
@@ -145,49 +140,9 @@ export const Navbar: React.FC<NavbarProps> = ({
           {isKiosk ? 'Exit Kiosk' : 'Pi Display'}
         </button>
 
-        {/* Auto-Trading Bot Toggle */}
-        <button
-          disabled aria-disabled="true" onClick={onToggleAutoTrading}
-          title={
-            isAutoTrading
-              ? 'Autonomous Bot is actively trading. Click to pause.'
-              : 'Autonomous Bot is paused. Click to activate automated execution.'
-          }
-          className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded transition-colors whitespace-nowrap border ${
-            isAutoTrading
-              ? 'bg-emerald-950/60 text-emerald-300 border-emerald-700/60 hover:bg-emerald-900/60'
-              : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:border-neutral-700 hover:text-neutral-200'
-          }`}
-        >
-          <span
-            className={`w-2 h-2 rounded-full ${
-              isAutoTrading ? 'bg-emerald-400 animate-pulse' : 'bg-neutral-500'
-            }`}
-          />
-          <span className="font-mono">{'AUTO-TRADE: LOCKED'}</span>
-        </button>
-
-        {/* Start / Pause Engine */}
-        <button
-          disabled aria-disabled="true" onClick={onToggleEngine}
-          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded transition-colors whitespace-nowrap ${
-            isRunning
-              ? 'bg-neutral-800 text-neutral-200 hover:bg-neutral-700'
-              : 'bg-emerald-600 text-white hover:bg-emerald-500'
-          }`}
-        >
-          {isRunning ? (
-            <>
-              <Pause className="w-3.5 h-3.5" />
-              <span>Locked</span>
-            </>
-          ) : (
-            <>
-              <Play className="w-3.5 h-3.5" />
-              <span>Locked</span>
-            </>
-          )}
-        </button>
+        <span className="hidden md:inline-flex px-2.5 py-1.5 text-xs text-neutral-400 border border-neutral-800 rounded" title="QuantScale autonomous execution is disabled; Python paper simulation is monitored separately">
+          QuantScale automation OFF
+        </span>
 
         {/* Volatility Alerts Button */}
         <button
@@ -206,15 +161,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               {activeAlertsCount}
             </span>
           )}
-        </button>
-
-        {/* API Setup Wizard Button */}
-        <button
-          disabled aria-disabled="true" onClick={onOpenSetupWizard}
-          title="Configure Kalshi API Credentials & Real-World Feed"
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-cyan-300 bg-cyan-950/50 hover:bg-cyan-900/60 border border-cyan-800/60 rounded transition-colors whitespace-nowrap"
-        >
-          <span>API Setup Locked</span>
         </button>
 
         {/* Theme Toggle Button (Dark / Day Mode) */}
