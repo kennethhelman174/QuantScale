@@ -24,6 +24,7 @@ import { PaperWalletTab } from './components/PaperWalletTab';
 import { KalshiApiCredentials } from './services/kalshiClient';
 import { Footer } from './components/Footer';
 import { PythonPaperStatus } from './components/PythonPaperStatus';
+import { PythonPaperOperations } from './components/PythonPaperOperations';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -184,6 +185,8 @@ export default function App() {
             onTriggerAutoTrade={() => ({ executed: false, message: 'Use authenticated backend controls.' })}
           />
         )}
+
+        {activeTab === 'python-paper' && <PythonPaperOperations />}
 
         {activeTab === 'positions' && (
           <PositionsTab
