@@ -298,6 +298,7 @@ async function startServer() {
       const execution = object(source.execution);
       const feed = object(source.feed);
       const market = object(source.market);
+      const marketQuote = object(market.quote);
       const totals = object(execution.totals);
       const trades = Array.isArray(execution.trades) ? execution.trades.slice(0,30) : [];
       const positions = Array.isArray(execution.positions) ? execution.positions.slice(0,20) : [];
