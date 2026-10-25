@@ -1,0 +1,22 @@
+name: QuantScale Python Research Tests
+on:
+  push:
+    branches: [research-foundation]
+  pull_request:
+    branches: [research-foundation]
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: research
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e '.[dev]'
+      - run: python -m pytest -q
+      - run: quantscale sample.csv --holdout
