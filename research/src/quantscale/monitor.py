@@ -133,7 +133,11 @@ td,th{border-bottom:1px solid #33465f;text-align:left;padding:12px}
 p{line-height:1.5}.note{color:#b6c7da}</style></head><body>
 <header><h1>QuantScale AI · Research Monitor</h1><small>Read-only diagnostics · no live trading</small></header>
 <main>"""
-    content += cell("Model health", report["status"])\n    content += cell("Forward resolved predictions", report["forward_scored"])\n    content += cell("Forward champion Brier", fmt(report["forward_champion_brier"]))\n    content += cell("Forward challenger Brier", fmt(report["forward_challenger_brier"]))\n    content += cell("Automatic promotion", "FROZEN")
+    content += cell("Model health", report["status"])
+    content += cell("Forward resolved predictions", report["forward_scored"])
+    content += cell("Forward champion Brier", fmt(report["forward_champion_brier"]))
+    content += cell("Forward challenger Brier", fmt(report["forward_challenger_brier"]))
+    content += cell("Automatic promotion", "FROZEN")
     content += cell("Scored predictions", report["scored_predictions"])
     content += cell("Pending predictions", report["pending_predictions"])
     content += cell("Recent Brier loss (lower is better)", fmt(report["recent_brier"]))
