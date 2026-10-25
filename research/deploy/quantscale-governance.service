@@ -1,0 +1,7 @@
+[Unit]
+Description=QuantScale research model eligibility audit
+After=quantscale-lab.service
+[Service]
+Type=oneshot
+ExecStart=/opt/quantscale-research/current/venv/bin/python -m quantscale.governance
+TimeoutStartSec=60
