@@ -122,7 +122,7 @@ export default function App() {
     <div className={`min-h-screen transition-colors duration-200 ${theme === 'light' ? 'theme-light bg-slate-50 text-slate-900' : 'bg-[#0a0a0c] text-neutral-100'} flex flex-col font-sans selection:bg-cyan-500 selection:text-black ${isKiosk ? 'p-2' : ''}`}>
       {!backendConnected && <div role="alert" className="bg-red-900 p-3 text-white text-center">Backend disconnected — NO trading will run locally.</div>}
       {backendConnected && <div role="status" className="bg-amber-950 text-amber-100 p-3 text-center text-sm font-semibold">
-        PAPER orders PAUSED · Kalshi market: {exchangeState?.marketState ?? 'CHECKING'} · Order book: {exchangeState?.quoteState ?? 'CHECKING'} · CF BRTI reference: {exchangeState?.referenceVerified ? 'verified' : 'not verified'}
+        QuantScale direct order routing OFF · Its own Kalshi feed: {exchangeState?.marketState ?? 'CHECKING'} · Book: {exchangeState?.quoteState ?? 'CHECKING'} · Reference: {exchangeState?.referenceVerified ? 'verified' : 'not verified'} · Python PAPER simulation is monitored separately below
         {exchangeState?.nextOpen && <span className="block text-xs mt-1 font-normal">Next listed opening: {new Date(exchangeState.nextOpen).toLocaleString()} (local time; not a guarantee of active trading)</span>}
       </div>}
       <PythonPaperStatus />
