@@ -1,0 +1,8 @@
+[Unit]
+Description=Hourly QuantScale model validation checks
+[Timer]
+OnBootSec=12min
+OnUnitInactiveSec=1h
+Persistent=true
+[Install]
+WantedBy=timers.target

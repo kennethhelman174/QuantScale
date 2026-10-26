@@ -1,0 +1,7 @@
+[Unit]
+Description=QuantScale forward-only research validation and quarantine advisory
+After=quantscale-lab.service
+[Service]
+Type=oneshot
+ExecStart=/opt/quantscale-research/current/venv/bin/python -m quantscale.validation
+TimeoutStartSec=60
